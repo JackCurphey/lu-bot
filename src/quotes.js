@@ -37,6 +37,34 @@ function countChar(s, ch) {
   return n;
 }
 
+// True when an unmatched delimiter of this style could be concealing a
+// citation — i.e. the run of text on the side where the quoted passage
+// would live is long enough to be a quote at all (MIN_QUOTE_WORDS).
+//
+// An unmatched opener's content would run forwards from it; an unmatched
+// closer's runs backwards. The run stops at the next delimiter of the same
+// style in either direction. Anything shorter than the minimum quote length
+// is below the threshold this module checks anywhere else, so there is
+// nothing a fabrication could be hiding in and no reason to fail closed.
+function unmatchedCouldHideQuote(residue, open, close, direction) {
+  const target = direction === 'forward' ? open : close;
+  for (let i = 0; i < residue.length; i++) {
+    if (residue[i] !== target) continue;
+    let run;
+    if (direction === 'forward') {
+      let j = i + 1;
+      while (j < residue.length && residue[j] !== open && residue[j] !== close) j += 1;
+      run = residue.slice(i + 1, j);
+    } else {
+      let j = i - 1;
+      while (j >= 0 && residue[j] !== open && residue[j] !== close) j -= 1;
+      run = residue.slice(j + 1, i);
+    }
+    if (wordCount(run) >= MIN_QUOTE_WORDS) return true;
+  }
+  return false;
+}
+
 // Extracts quoted spans.
 //
 // Unambiguous paired delimiters (see UNAMBIGUOUS_PAIR_RES above) are
@@ -68,6 +96,19 @@ function extractQuotes(reply) {
   const ambiguousSpans = [];
 
   let m;
+
+  // The shared residue: the reply with every properly-paired span of every
+  // unambiguous style removed. The unpaired-delimiter check below runs
+  // against this rather than against the whole reply. It is shared across
+  // styles on purpose — a « in a reply that also contains a paired “ ” span
+  // must not be judged against the curly-quoted text, which is already
+  // accounted for by its own span.
+  let residue = reply;
+  for (const { re } of UNAMBIGUOUS_PAIRS) {
+    re.lastIndex = 0;
+    residue = residue.replace(re, ' ');
+  }
+
   for (const { open, close, re } of UNAMBIGUOUS_PAIRS) {
     re.lastIndex = 0;
     while ((m = re.exec(reply))) {
@@ -78,10 +119,28 @@ function extractQuotes(reply) {
     // quoted passage produces no candidate span at all, so a fabrication
     // would sail through unchecked (a truncated generation that hits the
     // token limit mid-quotation has exactly this shape). The straight-quote
-    // path already fails closed on an unbalanced count; these styles now do
-    // the same. We do not guess where the missing delimiter belongs.
-    if (countChar(reply, open) !== countChar(reply, close)) {
-      unverifiable.push('unpaired quote delimiter');
+    // path already fails closed on an unbalanced count; these styles do the
+    // same. We do not guess where the missing delimiter belongs.
+    //
+    // The count is deliberately taken over the *residue* — the reply with
+    // every properly-paired span of this style removed — not over the whole
+    // reply. Counting the whole reply rejected genuine, correctly paired,
+    // verbatim citations whenever one unrelated delimiter character appeared
+    // anywhere else (a guillemet used as a comparison operator, an
+    // arrow-like » in a footnote). Silence is a failure mode too: a verifier
+    // that mutes legitimate replies is harder to notice than one that lets a
+    // fabrication through, because it just looks like a bot with nothing to
+    // say. Scoping the count keeps the fail-closed rule exactly where it
+    // earns its keep — a delimiter that never found a partner, with enough
+    // unaccounted text beside it to be concealing a quotation — while a
+    // delimiter that did pair up no longer counts against the reply.
+    const opens = countChar(residue, open);
+    const closes = countChar(residue, close);
+    if (opens !== closes) {
+      const direction = opens > closes ? 'forward' : 'backward';
+      if (unmatchedCouldHideQuote(residue, open, close, direction)) {
+        unverifiable.push('unpaired quote delimiter');
+      }
     }
   }
 

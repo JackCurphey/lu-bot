@@ -280,6 +280,45 @@ test('ordinary prose with apostrophes records no unverifiable reason', () => {
   assert.deepEqual(result.unverifiable, []);
 });
 
+// --- Round 5: the unpaired-delimiter rule must be scoped to unmatched text ---
+//
+// Round 4 counted openers against closers across the whole reply, so a
+// single unrelated delimiter character elsewhere — a guillemet used as a
+// comparison operator, an arrow-like » in a footnote — rejected an
+// otherwise genuine, correctly paired, verbatim citation. Silence is a
+// failure mode too: a verifier that mutes legitimate replies looks like a
+// bot with nothing to say rather than a bot with a bug. The counting is
+// now done only over the text left after the properly-paired spans are
+// removed, so a stray delimiter still fails closed but a matched pair no
+// longer counts against the reply.
+
+test('a stray guillemet used as a comparison operator does not reject a genuine paired quote', () => {
+  const reply =
+    'He said «Political power grows out of the barrel of a gun.» Also, 5 « 10 in that notation.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a stray » in a footnote does not reject a genuine curly-quoted citation', () => {
+  const reply =
+    'He said “Political power grows out of the barrel of a gun.” See details » here.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a paired but fabricated 「」 span is still caught as fabricated, not unverifiable', () => {
+  const reply = 'He wrote 「The revolution begins in the heart of the worker」';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+  assert.deepEqual(result.unverifiable, []);
+});
+
 test('a conversational reply with no quotes and an empty chunk array passes', () => {
   const result = verifyQuotes('Just talking, no citation here.', []);
   assert.equal(result.ok, true);
