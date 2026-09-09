@@ -1118,7 +1118,175 @@ git commit -m "feat: add persona loading and quote-verified responder"
 
 ---
 
-### Task 8: Discord adapter and entrypoint
+### Task 8: Corpus judge
+
+The gate that decides whether retrieved passages reach the prompt at all.
+Without it, a direct mention always passes retrieved chunks to the chat model,
+and a model handed passages tends to use them — producing a bot that quotes
+constantly. A system-prompt instruction is a weak brake; this is a mechanism.
+
+**Files:**
+- Create: `src/judge.js`
+- Test: `test/judge.test.js`
+
+**Interfaces:**
+- Consumes: `createLlm` (Task 2), `Config` (Task 1), chunk objects (Task 4).
+- Produces:
+  - `buildJudgeMessages({ message, chunks }) -> Array<{role, content}>` — a
+    terse prompt asking whether quoting would genuinely add something, and
+    demanding a strict JSON answer.
+  - `shouldUseCorpus({ message, chunks, llm, config }) -> Promise<boolean>` —
+    true only when the judge affirmatively says the corpus helps.
+
+**The decisive rule: this fails CLOSED toward silence.** Empty chunks, an
+unparseable answer, a missing field, or a thrown error all return `false`. A
+judge that cannot decide must not cause a quotation. That direction is chosen
+deliberately: over-quoting is the failure the user named, and a judge outage
+should degrade Lu Bot to an ordinary conversationalist rather than to a
+quote machine.
+
+- [ ] **Step 1: Write the failing test**
+
+```javascript
+// test/judge.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { buildJudgeMessages, shouldUseCorpus } from '../src/judge.js';
+
+const chunks = [{ text: 'Political power grows out of the barrel of a gun.', source: { title: 'T', author: 'A' } }];
+const config = { llm: { judgeModel: 'judge' } };
+const llmSaying = (content) => ({ async chat() { return content; } });
+
+test('the judge prompt carries the message and the candidate passage', () => {
+  const messages = buildJudgeMessages({ message: 'what about power?', chunks });
+  const joined = messages.map((m) => m.content).join('\n');
+  assert.ok(joined.includes('what about power?'));
+  assert.ok(joined.includes('barrel of a gun'));
+  assert.match(joined, /json/i);
+});
+
+test('an affirmative judgement uses the corpus', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"useCorpus": true, "reason": "direct"}'), config,
+  });
+  assert.equal(out, true);
+});
+
+test('a negative judgement does not', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"useCorpus": false, "reason": "small talk"}'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('no chunks means no model call at all', async () => {
+  let called = false;
+  const llm = { async chat() { called = true; return '{"useCorpus": true}'; } };
+  const out = await shouldUseCorpus({ message: 'm', chunks: [], llm, config });
+  assert.equal(out, false);
+  assert.equal(called, false);
+});
+
+test('an unparseable answer fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('Well, I think probably yes?'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('a missing field fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"reason": "forgot the field"}'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('a thrown model error fails closed rather than propagating', async () => {
+  const llm = { async chat() { throw new Error('LM Studio down'); } };
+  const out = await shouldUseCorpus({ message: 'm', chunks, llm, config });
+  assert.equal(out, false);
+});
+
+test('JSON wrapped in prose or fences is still parsed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('```json\n{"useCorpus": true}\n```'), config,
+  });
+  assert.equal(out, true);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npm test`
+Expected: FAIL — cannot find module `../src/judge.js`.
+
+- [ ] **Step 3: Write the minimal implementation**
+
+```javascript
+// src/judge.js
+const SYSTEM = [
+  'You decide whether quoting a source passage would genuinely improve a reply.',
+  'Answer ONLY with JSON: {"useCorpus": true|false, "reason": "<a few words>"}.',
+  'Answer true only when the passage directly bears on what was said.',
+  'Answer false for greetings, small talk, jokes, and anything the passage only',
+  'loosely resembles. When in doubt, answer false — an unnecessary quotation is',
+  'worse than none.',
+].join(' ');
+
+export function buildJudgeMessages({ message, chunks }) {
+  const passages = chunks
+    .map((c, i) => `[${i + 1}] ${c.text}`)
+    .join('\n\n');
+
+  return [
+    { role: 'system', content: SYSTEM },
+    { role: 'user', content: `Message:\n${message}\n\nCandidate passages:\n${passages}` },
+  ];
+}
+
+function parseVerdict(raw) {
+  const match = String(raw).match(/\{[\s\S]*\}/);
+  if (!match) return false;
+  try {
+    const parsed = JSON.parse(match[0]);
+    return parsed.useCorpus === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function shouldUseCorpus({ message, chunks, llm, config }) {
+  if (!chunks || chunks.length === 0) return false;
+
+  try {
+    const raw = await llm.chat({
+      model: config.llm.judgeModel,
+      messages: buildJudgeMessages({ message, chunks }),
+      temperature: 0,
+    });
+    return parseVerdict(raw);
+  } catch (err) {
+    console.warn(`Judge unavailable, replying without the corpus: ${err.message}`);
+    return false;
+  }
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npm test`
+Expected: PASS, 83 tests total.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/judge.js test/judge.test.js
+git commit -m "feat: add corpus judge gating when passages reach the prompt"
+```
+
+---
+
+### Task 9: Discord adapter and entrypoint
 
 Installing `discord.js` happens here — the only runtime dependency in the plan.
 
@@ -1238,6 +1406,7 @@ import { createLlm } from './llm.js';
 import { loadPersona } from './persona.js';
 import { respond } from './responder.js';
 import { loadCorpus, search } from './corpus/store.js';
+import { shouldUseCorpus } from './judge.js';
 import { startBot } from './discord.js';
 
 const HISTORY_LIMIT = 12;
@@ -1267,7 +1436,14 @@ await startBot({
   config,
   async onMention({ content, channelId }) {
     const history = histories.get(channelId) ?? [];
-    const chunks = await retrieve(content);
+
+    // Retrieval finds candidates; the judge decides whether they earn a place
+    // in the prompt. Without this gate a mention always passes passages to the
+    // chat model, and a model handed passages tends to quote them.
+    const candidates = await retrieve(content);
+    const useCorpus = await shouldUseCorpus({ message: content, chunks: candidates, llm, config });
+    const chunks = useCorpus ? candidates : [];
+
     const reply = await respond({ message: content, chunks, history, persona, llm, config });
 
     if (reply) {
@@ -1324,7 +1500,10 @@ git commit -m "feat: add Discord adapter and entrypoint responding to mentions"
 
 Deferred to a second plan, once the foundation above is proven working:
 
-- The two-stage proactive trigger (embedding gate plus judge model).
+- The **proactive** half of the trigger — deciding whether to speak unprompted
+  in a channel nobody addressed. The judge itself now ships in Task 8 and gates
+  whether the corpus reaches the prompt on a direct mention; what remains is
+  using the same two stages to decide whether to speak at all.
 - The replay harness for tuning trigger thresholds against saved history.
 - Cooldown and kill-switch enforcement for unprompted messages.
 - **Chapter-level metadata.** Task 6 records `chapter: null`, because a plain
