@@ -15,3 +15,6 @@ data/raw/
 
 # OS noise
 .DS_Store
+
+# SDD scratch workspace
+.superpowers/

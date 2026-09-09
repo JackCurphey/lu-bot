@@ -70,7 +70,7 @@ test('parses a valid environment', () => {
   assert.equal(cfg.discord.token, 'tok');
   assert.deepEqual(cfg.discord.allowedChannels, ['111', '222']);
   assert.equal(cfg.llm.baseUrl, 'http://localhost:1234/v1');
-  assert.equal(cfg.trigger.similarityFloor, 0.45);
+  assert.equal(cfg.trigger.similarityFloor, 0.65);
   assert.equal(cfg.trigger.enabled, true);
 });
 
@@ -152,7 +152,7 @@ export function loadConfig(env) {
       embedModel: env.LLM_EMBED_MODEL,
     },
     trigger: {
-      similarityFloor: num(env, 'TRIGGER_SIMILARITY_FLOOR', 0.45),
+      similarityFloor: num(env, 'TRIGGER_SIMILARITY_FLOOR', 0.65),
       cooldownSeconds: num(env, 'TRIGGER_COOLDOWN_SECONDS', 180),
       enabled: (env.TRIGGER_ENABLED ?? 'true') !== 'false',
       maxQuoteChars: num(env, 'MAX_QUOTE_CHARS', 400),
@@ -337,10 +337,10 @@ test('consecutive chunks overlap', () => {
   const text = [para('alpha', 400), para('beta', 400)].join('\n\n');
   const chunks = chunkText(text, { targetWords: 500, overlapWords: 50 });
 
-  const tailOfFirst = chunks[0].text.split(/\s+/).slice(-10).join(' ');
+  const startOfSecond = chunks[1].text.split(/\s+/).slice(0, 10).join(' ');
   assert.ok(
-    chunks[1].text.startsWith(tailOfFirst),
-    'second chunk should begin with the tail of the first',
+    chunks[0].text.includes(startOfSecond),
+    'the second chunk should begin with text carried over from the first',
   );
 });
 
@@ -552,7 +552,10 @@ export async function loadCorpus(dir) {
   }
 
   const buf = await readFile(join(dir, VECTORS));
-  const vectors = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+  // Copy out of the Buffer's pooled ArrayBuffer: Node pools small buffers, and a
+  // byteOffset that is not a multiple of 4 makes the Float32Array view throw.
+  const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength).slice();
+  const vectors = new Float32Array(bytes.buffer);
 
   return { chunks: meta.chunks, vectors, dim: meta.dim, size: meta.chunks.length };
 }
