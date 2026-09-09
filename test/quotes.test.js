@@ -84,3 +84,59 @@ test('overlong is measured on the normalised quote, not the raw whitespace-padde
   assert.deepEqual(result.overlong, []);
   assert.deepEqual(result.fabricated, []);
 });
+
+// --- Round 2: even-count stray straight quotes must not hide a fabrication ---
+//
+// The round-1 fix only failed closed when the total straight-quote count
+// was odd. With an even count of stray quotes straddling a genuine quoted
+// span, the old alternating-pair regex could still pair delimiters across
+// the stray quotes and miss the fabricated sentence entirely. These tests
+// cover the controller's ruling: q===2 stays unambiguous, q>=4 even is
+// ambiguous and must be checked segment-by-segment.
+
+test('an even count of stray straight quotes does not hide a fabricated citation', () => {
+  // Four straight quotes total: 6" ... "fabricated quote" ... 9". The old
+  // alternating-pair regex paired (6" <-> first ") and (second " <-> 9"),
+  // both yielding short filler that got filtered, so the fabricated
+  // sentence between them was never extracted at all.
+  const reply =
+    'He measured it at 6" then claimed, "The revolution begins in the heart of the worker" oddly 9" tall.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('an odd count of stray straight quotes plus a fabricated quote is still caught', () => {
+  const reply =
+    'He measured the board at 6" then added, "The revolution begins in the heart of the worker."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('four straight quotes bounding two genuine spans with short connecting prose still passes', () => {
+  const reply =
+    'He said, "Political power grows out of the barrel of a gun" then ' +
+    '"The philosophers have only interpreted the world, in various ways."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a single genuine straight-quoted span (q === 2) still passes', () => {
+  const reply = 'As he put it, "Political power grows out of the barrel of a gun."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a single fabricated straight-quoted span (q === 2) lands in fabricated, not unverifiable', () => {
+  const reply = 'He famously wrote, "The revolution begins in the heart of the worker."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+  assert.deepEqual(result.unverifiable, []);
+});
