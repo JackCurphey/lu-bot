@@ -490,3 +490,50 @@ test('A2: a blockquote whose content is properly delimited is not flagged', () =
   assert.equal(result.ok, true);
   assert.deepEqual(result.unverifiable, []);
 });
+
+// --- Whole-branch review, finding B: straight-quote parity is unscoped ------
+//
+// Round 5 scoped the unambiguous-pair count to the residue but left the
+// straight-quote parity check counting the whole reply. One stray straight
+// quote elsewhere — a measurement in inches — therefore failed a reply whose
+// genuine quoted span paired cleanly. Silence is a failure mode too.
+
+test('B: a genuine quotation survives one stray straight quote elsewhere', () => {
+  const reply =
+    'He wrote, "Political power grows out of the barrel of a gun." I lifted 6" more than that.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('B: the round-2 even-count evasion is not regressed by the B fix', () => {
+  const reply =
+    'He measured it at 6" then claimed, "The revolution begins in the heart of the worker" oddly 9" tall.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('B: an odd stray quote hiding a fabrication is not regressed by the B fix', () => {
+  const reply =
+    'He measured the board at 6" then added, "The revolution begins in the heart of the worker."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+// --- Whole-branch review, finding C: maxQuoteChars skipped ambiguous spans --
+//
+// `overlong` was computed from `quotes` only. Four or more straight quotes
+// send every span into ambiguousCandidates instead, so a verbatim but
+// enormous quotation cleared the length cap entirely.
+
+test('C: an overlong verbatim span among ambiguous candidates is rejected', () => {
+  const body = 'word '.repeat(120).trim();
+  const long = [{ text: `Preamble. ${body} End.` }];
+  const reply = `He measured 6" then quoted "${body}" and also 9" tall.`;
+  const result = verifyQuotes(reply, long, { maxQuoteChars: 100 });
+  assert.equal(result.ok, false);
+  assert.equal(result.overlong.length, 1);
+});
