@@ -51,9 +51,21 @@ metadata to disk. The bot loads this at startup and searches it in memory.
 Ingest is separate because embedding several books takes minutes and must
 never happen on the path of answering a message.
 
+### Judge
+Decides whether retrieved passages reach the prompt at all. Retrieval finds
+candidates; the judge answers a single narrow question about whether quoting
+would genuinely add something, using the small fast model with `temperature: 0`.
+
+**It fails closed toward silence.** Empty candidates, an unparseable answer, a
+missing field, or a thrown error all mean "do not quote". A judge outage
+degrades Lu Bot to an ordinary conversationalist rather than to a quote machine.
+
+This gate exists because a system-prompt instruction is a weak brake once
+passages are already in context: a model handed passages tends to use them.
+
 ### Trigger
-The two-stage gate. Takes an incoming message, returns a decision: stay quiet,
-or speak with these retrieved chunks.
+The two-stage gate for speaking *unprompted*. Takes an incoming message,
+returns a decision: stay quiet, or speak with these retrieved chunks.
 
 **This is a pure function with no side effects.** That property is load-bearing:
 it allows replaying saved channel history through the trigger offline to see
@@ -70,7 +82,8 @@ calls the chat model, returns text. Runs the quote verifier before returning.
 2. Guardrails reject outright: authored by a bot, channel not on the
    allowlist, or inside the cooldown window.
 3. If the bot was directly mentioned, it always responds — but whether that
-   response draws on the corpus is still decided by the stages below.
+   response draws on the corpus is decided by the judge, which gates whether
+   retrieved passages reach the prompt.
 4. Trigger stage one embeds the message, finds nearest chunks, drops anything
    below `TRIGGER_SIMILARITY_FLOOR`. No model call.
 5. Trigger stage two asks the judge model whether the corpus genuinely adds
@@ -122,6 +135,23 @@ Two defences:
 2. Before posting, a mechanical check confirms the quoted span appears verbatim
    in the retrieved text. This is a string check, not a matter of trusting the
    model.
+
+**As built, the verifier returns `{ ok, fabricated, overlong, unverifiable }`,
+and `ok` requires all three lists to be empty.** The third list is the outcome
+of five review rounds: a reply whose quoting cannot be parsed unambiguously is
+rejected rather than waved through. Unbalanced delimiters, ambiguous pairing
+where several readings are possible, and unpaired opening or closing marks all
+land there. The direction is deliberate — saying nothing beats inventing a
+citation.
+
+Recognised delimiters are `" "`, `“ ”`, `「 」`, `『 』`, `« »` and fullwidth
+`＂`. `‘ ’` are deliberately excluded because they double as apostrophes.
+
+**The length floor is script-aware.** A quoted span is checked when it has five
+or more whitespace-separated words *or* eight or more CJK characters. A
+word-count-only floor made the verifier inert in Chinese, which for a persona
+that quotes Mao is the language a fabricated quotation is most likely to arrive
+in.
 
 **The verifier gates quoted spans only, never whole replies.** A conversational
 reply with no quotation has nothing to verify and must pass through untouched.
@@ -187,8 +217,11 @@ Each stage is a foundation for the next and independently testable.
 
 1. Persona chat on direct mention.
 2. Corpus ingestion and retrieval.
-3. Retrieval-backed answers when asked.
+3. Retrieval-backed answers when asked, gated by the judge.
 4. Proactive chiming, tuned via the replay harness.
+
+Stages 1-3 are built. Stage 4 remains: the judge ships, but deciding whether to
+speak *at all* in a channel nobody addressed is separate work.
 
 ## Secrets
 
@@ -220,6 +253,15 @@ thinking.
 
 MLX builds throughout — both runtimes are installed, and MLX is commonly
 10-40% faster than GGUF on Apple Silicon.
+
+## Operational requirements
+
+- **`MessageContent` is a privileged Discord intent.** It must be enabled for
+  the application in the Discord developer portal, or the bot connects
+  successfully and then sees every message as empty — a failure that looks like
+  the bot ignoring people rather than like a configuration error.
+- The bot token, guild ID and allowed channel IDs live in `.env`, which is
+  gitignored. `.env.example` documents every key.
 
 ## Open questions
 
