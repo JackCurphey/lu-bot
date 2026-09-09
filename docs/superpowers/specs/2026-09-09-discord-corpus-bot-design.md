@@ -64,12 +64,16 @@ calls the chat model, returns text. Runs the quote verifier before returning.
 1. Message arrives at the adapter.
 2. Guardrails reject outright: authored by a bot, channel not on the
    allowlist, or inside the cooldown window.
-3. If the bot was directly mentioned, skip the trigger and always respond.
-4. Otherwise Trigger stage one embeds the message, finds nearest chunks,
-   drops anything below `TRIGGER_SIMILARITY_FLOOR`. No model call.
-5. Trigger stage two asks the judge model whether a quote genuinely adds
-   something. Structured output (boolean plus confidence), not prose.
-6. Responder generates in persona with the retrieved chunks as context.
+3. If the bot was directly mentioned, it always responds — but whether that
+   response draws on the corpus is still decided by the stages below.
+4. Trigger stage one embeds the message, finds nearest chunks, drops anything
+   below `TRIGGER_SIMILARITY_FLOOR`. No model call.
+5. Trigger stage two asks the judge model whether the corpus genuinely adds
+   something here. Structured output (boolean plus confidence), not prose.
+6. Responder generates in persona — with retrieved chunks as context if the
+   trigger said so, otherwise conversationally with none. For an unprompted
+   message, a negative trigger means staying silent; for a direct mention, it
+   means replying without the corpus.
 7. Quote verifier confirms any quoted span appears verbatim in the retrieved
    text. Failures are stripped or the message is dropped.
 8. Adapter posts.
@@ -107,6 +111,11 @@ Two defences:
    in the retrieved text. This is a string check, not a matter of trusting the
    model.
 
+**The verifier gates quoted spans only, never whole replies.** A conversational
+reply with no quotation has nothing to verify and must pass through untouched.
+Gating every response would block ordinary conversation on a check with no
+subject.
+
 The verifier is tested with a deliberately fabricated quote to prove it catches
 them.
 
@@ -115,13 +124,20 @@ them.
 Defined in an editable prose file, not in code, so character iteration is a
 text edit and a restart rather than a code change.
 
-The character is a scholar of the corpus: a distinct personality that knows
-these texts well and cites them as text, with chapter and title. Not a figure
-speaking from within the works.
+The character has its own personality and voice. The corpus is a resource it
+draws on when relevant, not the whole of what it is. It converses normally and
+reaches for a quote when one genuinely adds something.
 
-The persona presents text with attribution rather than arguing positions. This
-is both more useful for a reading group and less likely to make the bot
-unwelcome in a shared channel.
+**Consequence: retrieval is optional per response.** Most messages get an
+in-character reply with no corpus lookup. This applies to direct mentions too —
+being addressed does not imply a citation is wanted. Two response modes:
+
+- **Conversational** — in-character reply, no retrieval, no quote.
+- **Corpus-backed** — retrieval runs, quotes are included and attributed.
+
+Where the persona expresses a position, it does so as the character. Where it
+quotes, the attribution must be exact. These are separate obligations: the
+first is a matter of voice, the second is mechanically enforced below.
 
 ## Conversation memory
 
