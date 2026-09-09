@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Built corpus artefacts (regenerate with the ingest script)
+data/corpus/*.bin
+data/corpus/*.json
+
+# Source texts (large; keep out of git)
+data/raw/
+
+# OS noise
+.DS_Store
