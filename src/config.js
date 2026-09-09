@@ -56,3 +56,18 @@ export function loadConfig(env) {
     },
   };
 }
+
+// Configuration that parses cleanly but leaves the bot unable to do anything.
+// .env.example ships DISCORD_ALLOWED_CHANNELS empty, and with it empty
+// shouldHandle rejects every message — so the bot connects, reports itself
+// online, and ignores everyone, with nothing anywhere explaining why.
+export function startupWarnings(config) {
+  const warnings = [];
+  if (config.discord.allowedChannels.length === 0) {
+    warnings.push(
+      'DISCORD_ALLOWED_CHANNELS is empty: the bot will respond to nothing. ' +
+      'Set it to a comma-separated list of channel IDs it may read and speak in.',
+    );
+  }
+  return warnings;
+}

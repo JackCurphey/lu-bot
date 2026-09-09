@@ -1,4 +1,6 @@
-import { loadConfig } from './config.js';
+import { join } from 'node:path';
+
+import { loadConfig, startupWarnings } from './config.js';
 import { createLlm } from './llm.js';
 import { loadPersona } from './persona.js';
 import { respond } from './responder.js';
@@ -8,10 +10,26 @@ import { startBot } from './discord.js';
 
 const HISTORY_LIMIT = 12;
 
+// A rejected promise with no handler is fatal in Node. The bot is meant to sit
+// in a channel for weeks; one unhandled rejection in a background path should
+// not end that silently.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
 const config = loadConfig(process.env);
+
+for (const warning of startupWarnings(config)) {
+  console.warn(`WARNING: ${warning}`);
+}
+
 const llm = createLlm({ baseUrl: config.llm.baseUrl });
-const persona = await loadPersona('persona/lu-bot.md');
-const corpus = await loadCorpus('data/corpus');
+// Resolved against this module, not the process working directory: under
+// launchd, systemd or pm2 — how this is actually run — cwd is not the repo
+// root and a relative path here is an ENOENT crash at startup.
+const projectRoot = join(import.meta.dirname, '..');
+const persona = await loadPersona(join(projectRoot, 'persona', 'lu-bot.md'));
+const corpus = await loadCorpus(join(projectRoot, 'data', 'corpus'));
 
 console.log(
   corpus.size > 0

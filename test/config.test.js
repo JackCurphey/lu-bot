@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadConfig, loadLlmConfig } from '../src/config.js';
+import { loadConfig, loadLlmConfig, startupWarnings } from '../src/config.js';
 
 const valid = {
   DISCORD_BOT_TOKEN: 'tok',
@@ -84,4 +84,22 @@ test('loadConfig still returns exactly the same llm section as before', () => {
     judgeModel: 'judge',
     embedModel: 'embed',
   });
+});
+
+// --- Whole-branch review, finding I: silent no-op on the shipped default ----
+//
+// .env.example ships DISCORD_ALLOWED_CHANNELS empty. With it empty
+// shouldHandle rejects every message, yet startup printed "Lu Bot is online."
+// A new operator got a bot that connected, looked healthy and ignored
+// everyone, with nothing anywhere saying why.
+
+test('I: an empty channel allowlist produces a startup warning', () => {
+  const warnings = startupWarnings({ discord: { allowedChannels: [] } });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /DISCORD_ALLOWED_CHANNELS/);
+  assert.match(warnings[0], /respond to nothing|will not respond/i);
+});
+
+test('I: a populated channel allowlist produces no warning', () => {
+  assert.deepEqual(startupWarnings({ discord: { allowedChannels: ['123'] } }), []);
 });
