@@ -62,3 +62,77 @@ test('JSON wrapped in prose or fences is still parsed', async () => {
   });
   assert.equal(out, true);
 });
+
+// --- Explicit extraction rule: pinning tests (per review finding) ---
+
+test('two verdict objects in one reply fails closed (ambiguous)', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm',
+    chunks,
+    llm: llmSaying('{"useCorpus": false} then reconsidering: {"useCorpus": true}'),
+    config,
+  });
+  assert.equal(out, false);
+});
+
+test('prose braces plus a verdict fails closed (ambiguous)', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm',
+    chunks,
+    llm: llmSaying('I considered {this} and {that}. {"useCorpus": true}'),
+    config,
+  });
+  assert.equal(out, false);
+});
+
+test('useCorpus as a number fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"useCorpus": 1}'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('useCorpus as a string fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"useCorpus": "true"}'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('a nested useCorpus field (not at the top level) fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('{"outer": {"useCorpus": true}}'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('unparseable prose with no braces at all fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('no braces here whatsoever'), config,
+  });
+  assert.equal(out, false);
+});
+
+test('an empty string reply fails closed', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying(''), config,
+  });
+  assert.equal(out, false);
+});
+
+test('a prose prefix without braces still lets the verdict through', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm', chunks, llm: llmSaying('Sure: {"useCorpus": true}'), config,
+  });
+  assert.equal(out, true);
+});
+
+test('a fenced verdict with a brace-free prose prefix still lets the verdict through', async () => {
+  const out = await shouldUseCorpus({
+    message: 'm',
+    chunks,
+    llm: llmSaying('Here is my answer:\n```json\n{"useCorpus": true}\n```'),
+    config,
+  });
+  assert.equal(out, true);
+});

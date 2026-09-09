@@ -18,11 +18,44 @@ export function buildJudgeMessages({ message, chunks }) {
   ];
 }
 
+function stripCodeFences(text) {
+  return text.replace(/```json/gi, '').replace(/```/g, '');
+}
+
+// Walk the string tracking brace depth and collect every substring that
+// opens at depth 0 with `{` and closes back to depth 0 with `}`. This is a
+// deliberate top-level-object scan, not a "grab everything between the
+// first and last brace" heuristic — so multiple objects, or an object
+// sitting alongside unrelated brace-prose, are surfaced as distinct
+// candidates rather than silently merged into one greedy span.
+function extractTopLevelObjects(text) {
+  const candidates = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          candidates.push(text.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
 function parseVerdict(raw) {
-  const match = String(raw).match(/\{[\s\S]*\}/);
-  if (!match) return false;
+  const cleaned = stripCodeFences(String(raw)).trim();
+  const candidates = extractTopLevelObjects(cleaned);
+  if (candidates.length !== 1) return false;
   try {
-    const parsed = JSON.parse(match[0]);
+    const parsed = JSON.parse(candidates[0]);
     return parsed.useCorpus === true;
   } catch {
     return false;
