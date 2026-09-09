@@ -140,3 +140,72 @@ test('a single fabricated straight-quoted span (q === 2) lands in fabricated, no
   assert.match(result.fabricated[0], /revolution begins/);
   assert.deepEqual(result.unverifiable, []);
 });
+
+// --- Round 3: non-ASCII/non-curly quotation-mark delimiters ---
+//
+// Lu Bot's persona and corpus (Marx, Mao) make CJK punctuation like 「」
+// and 『』 the expected shape of a real quoted citation, not an exotic
+// edge case. verifyQuotes previously only recognised ASCII straight `"`
+// and curly “ ” as delimiters, so a fabricated quote wrapped in any other
+// quotation-mark style passed through unchecked. Fullwidth `＂` (U+FF02)
+// and the CJK/guillemet pairs below must now be recognised.
+
+test('a fabricated quote in fullwidth quotation marks (＂ ＂) is caught', () => {
+  const reply = 'He famously wrote, ＂The revolution begins in the heart of the worker＂.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+});
+
+test('a fabricated quote in Chinese corner brackets (「 」) is caught', () => {
+  const reply = 'He famously wrote, 「The revolution begins in the heart of the worker」.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+});
+
+test('a fabricated quote in Chinese white corner brackets (『 』) is caught', () => {
+  const reply = 'He famously wrote, 『The revolution begins in the heart of the worker』.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+});
+
+test('a fabricated quote in guillemets (« ») is caught', () => {
+  const reply = 'He famously wrote, «The revolution begins in the heart of the worker».';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /revolution begins/);
+});
+
+test('a genuine quote inside Chinese corner brackets (「 」) passes', () => {
+  const reply = '「Political power grows out of the barrel of a gun.」';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+});
+
+test('an apostrophe in ordinary prose does not get treated as a delimiter', () => {
+  const reply = "It's the workers' struggle that decides everything in the end, he said.";
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+});
+
+test('the round-2 even-count straight-quote evasion is still caught', () => {
+  const reply =
+    'He measured it at 6" then claimed, "The revolution begins in the heart of the worker" oddly 9" tall.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('a single genuine ASCII-quoted passage still passes', () => {
+  const reply = 'As he put it, "Political power grows out of the barrel of a gun."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+});

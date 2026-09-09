@@ -14,15 +14,32 @@ function wordCount(s) {
   return s.trim().split(/\s+/).filter(Boolean).length;
 }
 
-// Extracts quoted spans. Curly quotes always pair unambiguously: each “ is
-// closed by the next ”, so a curly span is checked directly against the
-// haystack.
+// Delimiter pairs whose opening and closing characters are distinct, so
+// pairing is never in doubt — unlike a symmetric delimiter (the same
+// character both opens and closes), these can be matched directly with a
+// non-greedy regex the way curly quotes always have been. Deliberately
+// excludes ‘ ’ (single curly quotes), which double as apostrophes in
+// ordinary English and would produce constant false positives.
+const UNAMBIGUOUS_PAIR_RES = [
+  /“([^“”]*)”/g, // curly double quotes
+  /「([^「」]*)」/g, // Chinese/Japanese quotation marks
+  /『([^『』]*)』/g, // Chinese/Japanese book/nested-quotation marks
+  /«([^«»]*)»/g, // guillemets
+];
+
+// Extracts quoted spans.
 //
-// Straight double quotes cannot be paired by inference — trying to guess
-// which " opens a quote and which closes it is exactly the bug this
-// function used to have (a stray straight quote, e.g. a measurement like
-// 6", could shift the pairing and hide a fabricated quote in the
-// resulting mis-paired span). Instead:
+// Unambiguous paired delimiters (see UNAMBIGUOUS_PAIR_RES above) are
+// checked directly against the haystack, same as curly quotes always were.
+//
+// Symmetric delimiters — where the same character opens and closes —
+// cannot be paired by inference: trying to guess which occurrence opens a
+// quote and which closes it is exactly the bug this function used to have
+// (a stray straight quote, e.g. a measurement like 6", could shift the
+// pairing and hide a fabricated quote in the resulting mis-paired span).
+// Currently only `"` is treated this way; the fullwidth `＂` (U+FF02) is
+// normalised to `"` up front so it inherits this same handling rather than
+// duplicating the pairing logic. Rules:
 //   - 0 straight quotes: no straight-quote candidates.
 //   - odd count: the delimiters themselves are unbalanced; report
 //     unverifiable and do not attempt to extract a span.
@@ -40,16 +57,22 @@ function extractQuotes(reply) {
   const spans = [];
   const ambiguousSpans = [];
 
-  // Curly quotes always pair unambiguously: each “ is closed by the next ”.
-  const curlyRe = /“([^“”]*)”/g;
   let m;
-  while ((m = curlyRe.exec(reply))) {
-    spans.push(m[1]);
+  for (const re of UNAMBIGUOUS_PAIR_RES) {
+    re.lastIndex = 0;
+    while ((m = re.exec(reply))) {
+      spans.push(m[1]);
+    }
   }
+
+  // Normalise fullwidth double quote to the ASCII straight quote so it
+  // inherits the odd/even ambiguity handling below without a second copy
+  // of the pairing logic.
+  const straightReply = reply.replace(/＂/g, '"');
 
   const positions = [];
   const straightRe = /"/g;
-  while ((m = straightRe.exec(reply))) {
+  while ((m = straightRe.exec(straightReply))) {
     positions.push(m.index);
   }
   const q = positions.length;
@@ -57,10 +80,10 @@ function extractQuotes(reply) {
   if (q % 2 !== 0) {
     unverifiable.push('unbalanced quote delimiters');
   } else if (q === 2) {
-    spans.push(reply.slice(positions[0] + 1, positions[1]));
+    spans.push(straightReply.slice(positions[0] + 1, positions[1]));
   } else if (q >= 4) {
     for (let i = 0; i < positions.length - 1; i++) {
-      ambiguousSpans.push(reply.slice(positions[i] + 1, positions[i + 1]));
+      ambiguousSpans.push(straightReply.slice(positions[i] + 1, positions[i + 1]));
     }
   }
 
