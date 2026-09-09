@@ -1,0 +1,13 @@
+{
+  "name": "lu-bot",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=26" },
+  "scripts": {
+    "test": "node --test",
+    "start": "node --env-file=.env src/index.js",
+    "ingest": "node --env-file=.env scripts/ingest.js"
+  },
+  "dependencies": {}
+}
