@@ -6,12 +6,28 @@ const REQUIRED = [
   'LLM_EMBED_MODEL',
 ];
 
+const LLM_REQUIRED = ['LLM_CHAT_MODEL', 'LLM_JUDGE_MODEL', 'LLM_EMBED_MODEL'];
+
 function num(env, key, fallback) {
   const raw = env[key];
   if (raw === undefined || raw === '') return fallback;
   const parsed = Number(raw);
   if (Number.isNaN(parsed)) throw new Error(`${key} must be a number, got "${raw}"`);
   return parsed;
+}
+
+export function loadLlmConfig(env) {
+  const missing = LLM_REQUIRED.filter((key) => !env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  return {
+    baseUrl: env.LLM_BASE_URL || 'http://localhost:1234/v1',
+    chatModel: env.LLM_CHAT_MODEL,
+    judgeModel: env.LLM_JUDGE_MODEL,
+    embedModel: env.LLM_EMBED_MODEL,
+  };
 }
 
 export function loadConfig(env) {
@@ -31,12 +47,7 @@ export function loadConfig(env) {
       guildId: env.DISCORD_GUILD_ID,
       allowedChannels: channels,
     },
-    llm: {
-      baseUrl: env.LLM_BASE_URL || 'http://localhost:1234/v1',
-      chatModel: env.LLM_CHAT_MODEL,
-      judgeModel: env.LLM_JUDGE_MODEL,
-      embedModel: env.LLM_EMBED_MODEL,
-    },
+    llm: loadLlmConfig(env),
     trigger: {
       similarityFloor: num(env, 'TRIGGER_SIMILARITY_FLOOR', 0.65),
       cooldownSeconds: num(env, 'TRIGGER_COOLDOWN_SECONDS', 180),

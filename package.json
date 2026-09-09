@@ -6,8 +6,8 @@
   "engines": { "node": ">=26" },
   "scripts": {
     "test": "node --test",
-    "start": "node --env-file=.env src/index.js",
-    "ingest": "node --env-file=.env scripts/ingest.js"
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "ingest": "node --env-file-if-exists=.env scripts/ingest.js"
   },
   "dependencies": {}
 }

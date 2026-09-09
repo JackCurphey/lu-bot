@@ -1,6 +1,6 @@
 import { readdir } from 'node:fs/promises';
 import { join, basename, extname } from 'node:path';
-import { loadConfig } from '../src/config.js';
+import { loadLlmConfig } from '../src/config.js';
 import { createLlm } from '../src/llm.js';
 import { ingestFiles } from '../src/corpus/ingest.js';
 import { saveCorpus } from '../src/corpus/store.js';
@@ -8,8 +8,8 @@ import { saveCorpus } from '../src/corpus/store.js';
 const RAW_DIR = 'data/raw';
 const OUT_DIR = 'data/corpus';
 
-const config = loadConfig(process.env);
-const llm = createLlm({ baseUrl: config.llm.baseUrl });
+const llmConfig = loadLlmConfig(process.env);
+const llm = createLlm({ baseUrl: llmConfig.baseUrl });
 
 let entries = [];
 try {
@@ -32,6 +32,6 @@ if (files.length === 0) {
 }
 
 console.log(`Ingesting ${files.length} file(s)...`);
-const records = await ingestFiles({ files, llm, embedModel: config.llm.embedModel });
+const records = await ingestFiles({ files, llm, embedModel: llmConfig.embedModel });
 await saveCorpus(OUT_DIR, records);
 console.log(`Wrote ${records.length} chunks to ${OUT_DIR}.`);
