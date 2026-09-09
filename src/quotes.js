@@ -20,12 +20,22 @@ function wordCount(s) {
 // non-greedy regex the way curly quotes always have been. Deliberately
 // excludes ‘ ’ (single curly quotes), which double as apostrophes in
 // ordinary English and would produce constant false positives.
-const UNAMBIGUOUS_PAIR_RES = [
-  /“([^“”]*)”/g, // curly double quotes
-  /「([^「」]*)」/g, // Chinese/Japanese quotation marks
-  /『([^『』]*)』/g, // Chinese/Japanese book/nested-quotation marks
-  /«([^«»]*)»/g, // guillemets
+//
+// Each entry carries its opening and closing characters as well as the
+// span regex, so that after extracting the properly-paired spans we can
+// also detect an *unpaired* delimiter of that style (see below).
+const UNAMBIGUOUS_PAIRS = [
+  { open: '“', close: '”', re: /“([^“”]*)”/g }, // curly double quotes
+  { open: '「', close: '」', re: /「([^「」]*)」/g }, // Chinese/Japanese quotation marks
+  { open: '『', close: '』', re: /『([^『』]*)』/g }, // Chinese/Japanese book/nested marks
+  { open: '«', close: '»', re: /«([^«»]*)»/g }, // guillemets
 ];
+
+function countChar(s, ch) {
+  let n = 0;
+  for (const c of s) if (c === ch) n += 1;
+  return n;
+}
 
 // Extracts quoted spans.
 //
@@ -58,10 +68,20 @@ function extractQuotes(reply) {
   const ambiguousSpans = [];
 
   let m;
-  for (const re of UNAMBIGUOUS_PAIR_RES) {
+  for (const { open, close, re } of UNAMBIGUOUS_PAIRS) {
     re.lastIndex = 0;
     while ((m = re.exec(reply))) {
       spans.push(m[1]);
+    }
+    // An unpaired opener or closer means the reply cannot be parsed
+    // unambiguously: with an opening delimiter and no closing partner the
+    // quoted passage produces no candidate span at all, so a fabrication
+    // would sail through unchecked (a truncated generation that hits the
+    // token limit mid-quotation has exactly this shape). The straight-quote
+    // path already fails closed on an unbalanced count; these styles now do
+    // the same. We do not guess where the missing delimiter belongs.
+    if (countChar(reply, open) !== countChar(reply, close)) {
+      unverifiable.push('unpaired quote delimiter');
     }
   }
 

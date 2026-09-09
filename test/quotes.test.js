@@ -209,3 +209,81 @@ test('a single genuine ASCII-quoted passage still passes', () => {
   assert.equal(result.ok, true);
   assert.deepEqual(result.fabricated, []);
 });
+
+// --- Round 4: unpaired opening/closing delimiters must fail closed ---
+//
+// The straight-quote path already fails closed on an unbalanced delimiter
+// count. The distinct-pair styles (“ ”, 「 」, 『 』, « ») did not: an
+// opening delimiter with no closing partner simply produced no candidate
+// span, so an uncited fabricated passage sailed through with ok: true.
+// Truncated model generations (token limit hit mid-quotation) produce
+// exactly this shape. Counting openers against closers per style is
+// enough — a mismatch either way means the reply cannot be parsed
+// unambiguously and must be rejected rather than guessed at.
+
+test('an unpaired opening corner bracket (「) is rejected', () => {
+  const reply = 'He wrote 「The revolution begins in the heart of the worker';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('a lone unpaired closing corner bracket (」) is rejected', () => {
+  const reply = 'The revolution begins in the heart of the worker」 he wrote';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('an unpaired opening curly double quote (“) is rejected', () => {
+  const reply = 'He wrote “The revolution begins in the heart of the worker';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('an unpaired guillemet («) is rejected', () => {
+  const reply = 'He wrote «The revolution begins in the heart of the worker';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('an unpaired white corner bracket (『) is rejected', () => {
+  const reply = 'He wrote 『The revolution begins in the heart of the worker';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('two correctly paired 「」 spans in one reply, both genuine, pass', () => {
+  const reply =
+    'He said 「Political power grows out of the barrel of a gun.」 and later ' +
+    '「The philosophers have only interpreted the world, in various ways.」';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a correctly paired 「」 span records no unverifiable reason', () => {
+  const reply = 'He said 「Political power grows out of the barrel of a gun.」';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('ordinary prose with apostrophes records no unverifiable reason', () => {
+  const reply = "It's the workers' struggle that decides everything in the end, he said.";
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('a conversational reply with no quotes and an empty chunk array passes', () => {
+  const result = verifyQuotes('Just talking, no citation here.', []);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.overlong, []);
+  assert.deepEqual(result.unverifiable, []);
+});
