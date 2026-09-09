@@ -189,6 +189,9 @@ with empty values.
 - **Source texts.** Which specific works, and where do the text files come
   from? Marx is public domain. Mao's works are widely available via the
   Marxists Internet Archive. Needs deciding before ingest can be built.
+- **Persona detail.** The character is a Chinese Maoist with its own
+  personality, but name, voice, register, and behavioural rules are not yet
+  written. The persona file cannot be authored until these are decided.
 - **Model selection.** `Qwen3.6-35B-A3B` is a candidate from current sources
   but unverified against LM Studio's catalogue. An embedding model has not yet
   been chosen. Both require LM Studio first-run, which needs the user at the
