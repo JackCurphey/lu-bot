@@ -79,8 +79,9 @@ calls the chat model, returns text. Runs the quote verifier before returning.
 ## Data flow
 
 1. Message arrives at the adapter.
-2. Guardrails reject outright: authored by a bot, channel not on the
-   allowlist, or inside the cooldown window.
+2. Guardrails reject outright: authored by a bot, authored by the bot itself,
+   or a channel not on the allowlist. (The cooldown window is listed under
+   Guardrails as parsed but not enforced — see that section.)
 3. If the bot was directly mentioned, it always responds — but whether that
    response draws on the corpus is decided by the judge, which gates whether
    retrieved passages reach the prompt.
@@ -98,11 +99,18 @@ calls the chat model, returns text. Runs the quote verifier before returning.
 
 ## Corpus and retrieval
 
-**Chunking.** Split on natural boundaries — paragraphs first, sentences as
-fallback — targeting 500–800 tokens per chunk with ~15% overlap. Overlap
-exists because a relevant passage may straddle a boundary. Paragraph-aligned
-splitting keeps chunks semantically whole, improving both retrieval and quote
-quality.
+**Chunking.** Split on natural boundaries, targeting 500–800 tokens per chunk
+with ~15% overlap. Overlap exists because a relevant passage may straddle a
+boundary. Paragraph-aligned splitting keeps chunks semantically whole,
+improving both retrieval and quote quality.
+
+**As built there is no sentence-level fallback.** The chunker splits on
+paragraphs only; a paragraph larger than the target is emitted whole, however
+long it is. This is tolerable today because the corpus is empty. It must be
+fixed before real texts are ingested — Marx in particular runs to
+page-length paragraphs, and an oversized chunk degrades retrieval (the
+embedding averages over too much) and pushes past `MAX_QUOTE_CHARS` on the way
+out. Deferred deliberately rather than built against zero data.
 
 **Metadata** accompanies every chunk: work title, author, chapter, and position.
 This is what makes citation possible and cannot be reconstructed after ingest.
@@ -144,8 +152,29 @@ where several readings are possible, and unpaired opening or closing marks all
 land there. The direction is deliberate — saying nothing beats inventing a
 citation.
 
-Recognised delimiters are `" "`, `“ ”`, `「 」`, `『 』`, `« »` and fullwidth
-`＂`. `‘ ’` are deliberately excluded because they double as apostrophes.
+Recognised delimiters are `" "`, `“ ”`, `「 」`, `『 』`, `« »`, `【 】`,
+`﹁ ﹂`, `〈 〉`, `《 》` and fullwidth `＂`. `‘ ’` are deliberately excluded
+because they double as apostrophes.
+
+**The load-bearing assumption, stated plainly: the verifier only inspects text
+that sits inside a recognised delimiter.** Nothing about the delimiter logic
+obliges the model to use one, so five review rounds of hardening delimiter
+*pairing* left a reply of the shape `As Mao wrote in On Practice: <invented
+sentence>` completely unchecked. Two things follow, and both are now built:
+
+1. The persona is *required* to wrap every quotation in `"` or `「 」`, and is
+   told that a quotation it cannot wrap that way must not be given at all.
+2. Attribution-shaped output carrying no delimiter — a Discord blockquote
+   line, or an attribution cue followed by a colon and quoted-looking text —
+   is rejected as `unverifiable`. This occasionally flags a reply that merely
+   uses a colon after "said" without quoting. That is the correct direction to
+   err.
+
+The same rule scopes what the verifier does *not* do: with no passages
+supplied there is nothing to cite, so fabrication matching does not run at
+all. Quoting the person you are talking to back at them is conversation, and
+running an empty haystack against it muted the bot in its own default
+shipping state.
 
 **The length floor is script-aware.** A quoted span is checked when it has five
 or more whitespace-separated words *or* eight or more CJK characters. A
@@ -183,19 +212,38 @@ first is a matter of voice, the second is mechanically enforced below.
 
 ## Conversation memory
 
-Per-channel, not per-user. A rolling window of recent channel messages. In a
-shared server people talk to each other as much as to the bot; per-user memory
-would produce replies that ignore the surrounding conversation.
+Per-channel, not per-user.
+
+**As built, the window holds bot-mention exchanges only** — the user message
+that mentioned the bot and the reply it gave, the last twelve entries per
+channel. Messages between humans never enter it, because the adapter discards
+anything that does not mention the bot before it reaches the responder.
+
+The original intent was a rolling window of recent *channel* messages, on the
+reasoning that in a shared server people talk to each other as much as to the
+bot and per-user memory would produce replies that ignore the surrounding
+conversation. That is still the intent; it is not what exists. Reaching it
+requires the adapter to buffer non-mention messages, which is a change to the
+allowlist and privacy story and belongs with the proactive-speech stage.
 
 ## Guardrails
 
-All configurable, all enabled by default:
+**Enforced as built:**
 
-- Channel allowlist. Start narrow — one opted-in discussion channel.
-- Cooldown between unprompted messages (`TRIGGER_COOLDOWN_SECONDS`).
+- Channel allowlist. Start narrow — one opted-in discussion channel. An empty
+  allowlist means the bot responds to nothing; startup warns when it is empty,
+  because a bot that connects and silently ignores everyone looks healthy.
 - Never respond to itself or to other bots.
-- Global off switch effective without restart (`TRIGGER_ENABLED`).
 - Maximum quote length (`MAX_QUOTE_CHARS`).
+
+**Parsed but not yet enforced.** `config.js` loads these and nothing reads
+them. They belong to the proactive-speech stage, which is where the behaviour
+they gate lives:
+
+- Cooldown between unprompted messages (`TRIGGER_COOLDOWN_SECONDS`) — there
+  are no unprompted messages yet to space out.
+- Global off switch (`TRIGGER_ENABLED`) — nothing consults it, so setting it
+  to `false` currently changes nothing.
 
 ## Testing
 
