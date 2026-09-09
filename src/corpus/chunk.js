@@ -15,7 +15,7 @@ export function chunkText(text, { targetWords = 600, overlapWords = 90 } = {}) {
   const flush = () => {
     if (buffer.length === 0) return;
     chunks.push({ text: buffer.join('\n\n'), index: chunks.length });
-    const tail = words(buffer[buffer.length - 1]).slice(-overlapWords);
+    const tail = overlapWords > 0 ? words(buffer[buffer.length - 1]).slice(-overlapWords) : [];
     buffer = tail.length > 0 ? [tail.join(' ')] : [];
     count = tail.length;
   };
