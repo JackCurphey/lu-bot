@@ -379,3 +379,114 @@ test('a short Chinese phrase used as emphasis is still ignored', () => {
   assert.deepEqual(result.fabricated, []);
   assert.deepEqual(result.unverifiable, []);
 });
+
+// --- Whole-branch review, finding A: attribution without any delimiter ---
+//
+// Five review rounds hardened delimiter *pairing* on the unstated assumption
+// that a delimiter is present at all. Nothing required the model to use one.
+// Every string below was verified reaching the channel with ok: true.
+//
+// A1 closes the missing delimiter pairs (【】, ﹁﹂, 〈〉) and the reversed
+// balanced pair (a closing mark appearing before its opener, where the counts
+// balance so the mismatch branch never ran).
+//
+// A2 rejects attribution-shaped output carrying no delimiter at all.
+
+test('A1: a fabricated quote in lenticular brackets (【 】) is caught', () => {
+  const reply = 'He wrote 【a fabricated line about the dictatorship of the proletariat】';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('A1: a fabricated quote in vertical corner brackets (﹁ ﹂) is caught', () => {
+  const reply = 'He wrote ﹁The revolution begins in the heart of the worker﹂';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('A1: a fabricated quote in angle brackets (〈 〉) is caught', () => {
+  const reply = 'He wrote 〈The revolution begins in the heart of the worker〉';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('A1: a reversed but balanced 」…「 pair is unverifiable, not invisible', () => {
+  const reply = 'He wrote 」The revolution begins in the heart of the worker「';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('A1: a reversed but balanced 》…《 pair is unverifiable', () => {
+  const reply = 'He wrote 》The revolution begins in the heart of the worker《';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('A1: a reversed but balanced »…« pair is unverifiable', () => {
+  const reply = 'He wrote »The revolution begins in the heart of the worker«';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('A2: an attribution cue with a colon and no delimiter is rejected', () => {
+  const reply =
+    'As Mao wrote in On Practice: all genuine knowledge originates in direct experience of the class struggle.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('A2: a Discord blockquote carrying an undelimited citation is rejected', () => {
+  const reply = 'Mao put it plainly:\n\n> The revolution begins in the heart of every worker.';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('A2: a bold-marked undelimited citation is rejected', () => {
+  const reply = 'Marx said it best: **The philosophers have merely invented this sentence.**';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('A2: single curly quotes after an attribution cue are rejected', () => {
+  const reply = 'Mao told us, ‘the masses are the makers of every revolution in history’';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('A2: a Chinese attribution with a fullwidth colon and no delimiter is rejected', () => {
+  const reply = '毛主席说过：革命不是请客吃饭，不是做文章。';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('A2: a colon with no attribution cue is ordinary conversation and passes', () => {
+  const result = verifyQuotes('Here is the thing: I disagree.', chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('A2: a correctly delimited genuine quotation with an attribution cue passes', () => {
+  const reply = 'He wrote, "Political power grows out of the barrel of a gun."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('A2: a short reply with no colon at all passes', () => {
+  const result = verifyQuotes('He said so himself, comrade.', chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('A2: a blockquote whose content is properly delimited is not flagged', () => {
+  const reply = '> "Political power grows out of the barrel of a gun."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
