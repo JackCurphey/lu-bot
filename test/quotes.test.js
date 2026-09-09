@@ -326,3 +326,56 @@ test('a conversational reply with no quotes and an empty chunk array passes', ()
   assert.deepEqual(result.overlong, []);
   assert.deepEqual(result.unverifiable, []);
 });
+
+// --- Controller adjudication: the length floor must be script-aware ---
+//
+// MIN_QUOTE_WORDS splits on whitespace. Chinese does not put spaces between
+// words, so an entire Chinese quotation of any length counted as one "word"
+// and never met the floor — meaning it was never fabrication-checked, and
+// never counted as enough unaccounted text to trip the unpaired-delimiter
+// guard. The verifier was inert in exactly the language a fabricated
+// quotation from a Marx/Mao corpus is most likely to arrive in, and 「」 are
+// Chinese quotation marks. The floor is now met by either five
+// whitespace-separated tokens or MIN_QUOTE_CJK_CHARS (8) CJK codepoints.
+
+const CN_FABRICATION = '政治权力从枪杆子中产生，革命始于工人之心';
+
+test('a paired 「」 Chinese fabrication is caught', () => {
+  const reply = `他说：「${CN_FABRICATION}」`;
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /革命始于工人之心/);
+});
+
+test('an unpaired 「 before a Chinese fabrication is not silently ignored', () => {
+  const reply = `他说：「${CN_FABRICATION}`;
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+});
+
+test('a Chinese fabrication in ASCII straight quotes is caught', () => {
+  const reply = `He wrote "${CN_FABRICATION}"`;
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /革命始于工人之心/);
+});
+
+test('a Chinese fabrication in curly quotes is caught', () => {
+  const reply = `He wrote “${CN_FABRICATION}”`;
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+  assert.match(result.fabricated[0], /革命始于工人之心/);
+});
+
+test('a short Chinese phrase used as emphasis is still ignored', () => {
+  // 实事求是 is four CJK characters — below MIN_QUOTE_CJK_CHARS, so it is
+  // ordinary emphasis, not a citation. The bot must not be muted by it.
+  const reply = '他所谓的「实事求是」正是这个道理。';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.fabricated, []);
+  assert.deepEqual(result.unverifiable, []);
+});

@@ -1,5 +1,22 @@
 const MIN_QUOTE_WORDS = 5;
 
+// Chinese does not put spaces between words, so a whole Chinese quotation of
+// any length counts as a single whitespace-separated token. A word-only floor
+// therefore never fired on Chinese at all: every Chinese span fell below it,
+// was never fabrication-checked, and never counted as enough unaccounted text
+// to trip the unpaired-delimiter guard. That made the verifier inert in the
+// language a fabricated quotation from this corpus is most likely to arrive
+// in — and 「」 are Chinese quotation marks in the first place.
+//
+// So the floor is script-aware: a span clears it on either measure. Eight CJK
+// characters is long enough that ordinary short emphasis (a four-character
+// idiom, say) is not mistaken for a citation, and short enough that a real
+// quoted sentence clears it easily.
+const MIN_QUOTE_CJK_CHARS = 8;
+
+// CJK Unified Ideographs plus the Extension A and Compatibility blocks.
+const CJK_RE = /[㐀-䶿一-鿿豈-﫿]/gu;
+
 function normalise(s) {
   return s
     .replace(/[“”″]/g, '"')
@@ -12,6 +29,19 @@ function normalise(s) {
 
 function wordCount(s) {
   return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function cjkCount(s) {
+  CJK_RE.lastIndex = 0;
+  return (s.match(CJK_RE) ?? []).length;
+}
+
+// The single length floor for "is this span long enough to be a citation at
+// all?". Every place that used to compare wordCount against MIN_QUOTE_WORDS
+// calls this instead, so the fabrication-candidate filter and the
+// unmatched-text guard cannot drift apart.
+function meetsLengthFloor(s) {
+  return wordCount(s) >= MIN_QUOTE_WORDS || cjkCount(s) >= MIN_QUOTE_CJK_CHARS;
 }
 
 // Delimiter pairs whose opening and closing characters are distinct, so
@@ -39,7 +69,8 @@ function countChar(s, ch) {
 
 // True when an unmatched delimiter of this style could be concealing a
 // citation — i.e. the run of text on the side where the quoted passage
-// would live is long enough to be a quote at all (MIN_QUOTE_WORDS).
+// would live is long enough to be a quote at all (meetsLengthFloor, which
+// covers both space-separated words and unspaced CJK).
 //
 // An unmatched opener's content would run forwards from it; an unmatched
 // closer's runs backwards. The run stops at the next delimiter of the same
@@ -60,7 +91,7 @@ function unmatchedCouldHideQuote(residue, open, close, direction) {
       while (j >= 0 && residue[j] !== open && residue[j] !== close) j -= 1;
       run = residue.slice(j + 1, i);
     }
-    if (wordCount(run) >= MIN_QUOTE_WORDS) return true;
+    if (meetsLengthFloor(run)) return true;
   }
   return false;
 }
@@ -166,10 +197,8 @@ function extractQuotes(reply) {
     }
   }
 
-  const quotes = spans.map((s) => s.trim()).filter((s) => wordCount(s) >= MIN_QUOTE_WORDS);
-  const ambiguousCandidates = ambiguousSpans
-    .map((s) => s.trim())
-    .filter((s) => wordCount(s) >= MIN_QUOTE_WORDS);
+  const quotes = spans.map((s) => s.trim()).filter(meetsLengthFloor);
+  const ambiguousCandidates = ambiguousSpans.map((s) => s.trim()).filter(meetsLengthFloor);
 
   return { quotes, unverifiable, ambiguousCandidates };
 }
