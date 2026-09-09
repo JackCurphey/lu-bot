@@ -1,7 +1,7 @@
 // test/quotes.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyQuotes } from '../src/quotes.js';
+import { verifyQuotes, checkQuoteLength } from '../src/quotes.js';
 
 const chunks = [
   { text: 'Political power grows out of the barrel of a gun. That is the lesson.' },
@@ -536,4 +536,91 @@ test('C: an overlong verbatim span among ambiguous candidates is rejected', () =
   const result = verifyQuotes(reply, long, { maxQuoteChars: 100 });
   assert.equal(result.ok, false);
   assert.equal(result.overlong.length, 1);
+});
+
+// --- Finding E: the no-corpus path discarded the attribution check ---------
+//
+// checkQuoteLength ran extractQuotes — which computes the undelimited-
+// attribution signal — and then threw the result away, returning
+// `unverifiable: []` unconditionally. So on the bot's documented default
+// state (no corpus loaded) an attribution-shaped reply carrying no quotation
+// marks reached the channel, while the identical string was dropped once a
+// corpus was present.
+//
+// With no corpus the bot holds no passages at all, so any citation it emits
+// is necessarily invented: this path should be the strictest, not the most
+// permissive. Only the undelimited-attribution signal applies here, though —
+// the delimiter-integrity guards exist to stop a fabrication evading haystack
+// matching, and with no haystack there is nothing for them to protect.
+
+const NEUTRAL_CHUNKS = [{ text: 'The quick brown fox jumps over the lazy dog.' }];
+const INVENTED = 'A sentence that appears in no source whatsoever.';
+
+test('E: an attribution cue plus colon plus invented sentence is rejected with no corpus', () => {
+  const result = checkQuoteLength(`As Ada Placeholder wrote in Some Work: ${INVENTED}`);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('E: a blockquote line carrying an invented sentence is rejected with no corpus', () => {
+  const result = checkQuoteLength(`Ada Placeholder put it plainly:\n\n> ${INVENTED}`);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('E: a CJK attribution cue plus invented sentence is rejected with no corpus', () => {
+  const result = checkQuoteLength('某人说过：甲乙丙丁戊己庚辛壬癸。');
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
+});
+
+test('E: plain conversation with no colon and no cue passes with no corpus', () => {
+  const result = checkQuoteLength('Good morning. The weather is agreeable today.');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: quoting the user back in straight double quotes passes with no corpus', () => {
+  const result = checkQuoteLength('You said "the quick brown fox is fast" and I agree with you.');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: a stray straight quote such as an inch measurement passes with no corpus', () => {
+  const result = checkQuoteLength('The bar was 6" off the floor and he still pulled it.');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: a short CJK phrase in corner brackets passes with no corpus', () => {
+  const result = checkQuoteLength('「甲乙丙丁」 is all he offered.');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: a colon with no attribution cue passes with no corpus', () => {
+  const result = checkQuoteLength('Here is the thing: I disagree with almost all of that.');
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: with a corpus an invented delimited quotation is still rejected', () => {
+  const result = verifyQuotes(`He wrote, "${INVENTED}"`, NEUTRAL_CHUNKS);
+  assert.equal(result.ok, false);
+  assert.equal(result.fabricated.length, 1);
+});
+
+test('E: with a corpus a verbatim delimited quotation still passes', () => {
+  const result = verifyQuotes(
+    'He wrote, "The quick brown fox jumps over the lazy dog."',
+    NEUTRAL_CHUNKS,
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('E: with a corpus an undelimited attribution is still rejected', () => {
+  const result = verifyQuotes(`As Ada Placeholder wrote in Some Work: ${INVENTED}`, NEUTRAL_CHUNKS);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.includes('attribution without quotation marks'));
 });

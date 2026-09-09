@@ -172,3 +172,74 @@ test('G: a reply that is nothing but reasoning yields no message', async () => {
   });
   assert.equal(out, null);
 });
+
+// --- Finding E: an undelimited attribution reached the channel with no corpus
+//
+// The defect was invisible at the verifier level alone — verifyQuotes was
+// always correct. It lived in which verifier `respond` chose when chunks was
+// empty, which is the bot's documented shipping default and also what chunks
+// looks like every time the relevance judge declines a loaded corpus. So
+// these run against `respond`, the path that actually executes.
+
+const NEUTRAL_CHUNKS = [
+  { text: 'The quick brown fox jumps over the lazy dog.', source: { title: 'T', author: 'A' } },
+];
+const INVENTED = 'A sentence that appears in no source whatsoever.';
+
+const respondWith = (text, withChunks = []) => respond({
+  message: 'anything', chunks: withChunks, history: [], persona,
+  llm: llmReturning(text), config,
+});
+
+test('E: an attribution cue plus colon plus invented sentence is dropped with no corpus', async () => {
+  assert.equal(await respondWith(`As Ada Placeholder wrote in Some Work: ${INVENTED}`), null);
+});
+
+test('E: a blockquote line carrying an invented sentence is dropped with no corpus', async () => {
+  assert.equal(await respondWith(`Ada Placeholder put it plainly:\n\n> ${INVENTED}`), null);
+});
+
+test('E: a CJK attribution cue plus invented sentence is dropped with no corpus', async () => {
+  assert.equal(await respondWith('某人说过：甲乙丙丁戊己庚辛壬癸。'), null);
+});
+
+test('E: plain conversation with no colon and no cue survives with no corpus', async () => {
+  const text = 'Good morning. The weather is agreeable today.';
+  assert.equal(await respondWith(text), text);
+});
+
+test('E: quoting the user back in straight double quotes survives with no corpus', async () => {
+  const text = 'You said "the quick brown fox is fast" and I agree with you.';
+  assert.equal(await respondWith(text), text);
+});
+
+test('E: a stray straight quote survives with no corpus', async () => {
+  const text = 'The bar was 6" off the floor and he still pulled it.';
+  assert.equal(await respondWith(text), text);
+});
+
+test('E: a short CJK phrase in corner brackets survives with no corpus', async () => {
+  const text = '「甲乙丙丁」 is all he offered.';
+  assert.equal(await respondWith(text), text);
+});
+
+test('E: a colon with no attribution cue survives with no corpus', async () => {
+  const text = 'Here is the thing: I disagree with almost all of that.';
+  assert.equal(await respondWith(text), text);
+});
+
+test('E: with a corpus an invented delimited quotation is still dropped', async () => {
+  assert.equal(await respondWith(`He wrote, "${INVENTED}"`, NEUTRAL_CHUNKS), null);
+});
+
+test('E: with a corpus a verbatim delimited quotation still reaches the channel', async () => {
+  const text = 'He wrote, "The quick brown fox jumps over the lazy dog."';
+  assert.equal(await respondWith(text, NEUTRAL_CHUNKS), text);
+});
+
+test('E: with a corpus an undelimited attribution is still dropped', async () => {
+  assert.equal(
+    await respondWith(`As Ada Placeholder wrote in Some Work: ${INVENTED}`, NEUTRAL_CHUNKS),
+    null,
+  );
+});
