@@ -3,11 +3,15 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=26" },
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "test": "node --test",
     "start": "node --env-file-if-exists=.env src/index.js",
     "ingest": "node --env-file-if-exists=.env scripts/ingest.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  }
 }
