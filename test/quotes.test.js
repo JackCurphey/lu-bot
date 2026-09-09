@@ -52,3 +52,35 @@ test('any quote fails when no chunks were supplied', () => {
   const reply = 'He wrote, "Political power grows out of the barrel of a gun."';
   assert.equal(verifyQuotes(reply, []).ok, false);
 });
+
+test('a stray straight quote earlier in the reply does not hide a fabricated citation', () => {
+  const reply =
+    'He measured the board at 6" then added, "The revolution begins in the heart of the worker."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('a curly-quoted span followed by a stray straight quote is still unverifiable', () => {
+  const reply =
+    'He said, “Political power grows out of the barrel of a gun” and the board measured 6".';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, false);
+  assert.ok(result.unverifiable.length > 0, 'expected unverifiable reasons to be recorded');
+});
+
+test('a reply with balanced quotes still passes normally', () => {
+  const reply = 'As he put it, "Political power grows out of the barrel of a gun."';
+  const result = verifyQuotes(reply, chunks);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.unverifiable, []);
+});
+
+test('overlong is measured on the normalised quote, not the raw whitespace-padded one', () => {
+  const reply =
+    'He said, "Political   power    grows   out   of\n\n\nthe   barrel   of   a   gun."';
+  const result = verifyQuotes(reply, chunks, { maxQuoteChars: 55 });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.overlong, []);
+  assert.deepEqual(result.fabricated, []);
+});
