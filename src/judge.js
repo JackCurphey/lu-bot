@@ -8,8 +8,18 @@ const SYSTEM = [
 ].join(' ');
 
 export function buildJudgeMessages({ message, chunks }) {
+  // Attribution is part of what makes a passage worth quoting: a line from a
+  // named work bears differently on a message than an unattributed fragment.
+  // This used to pass c.text alone, asking the judge to weigh relevance with
+  // the source removed.
   const passages = chunks
-    .map((c, i) => `[${i + 1}] ${c.text}`)
+    .map((c, i) => {
+      const { title, author } = c.source ?? {};
+      const attribution = title
+        ? ` From "${title}"${author ? ` by ${author}` : ''}:`
+        : '';
+      return `[${i + 1}]${attribution}\n${c.text}`;
+    })
     .join('\n\n');
 
   return [

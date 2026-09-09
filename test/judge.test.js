@@ -14,6 +14,39 @@ test('the judge prompt carries the message and the candidate passage', () => {
   assert.match(joined, /json/i);
 });
 
+// --- Whole-branch review, finding J: the judge could not see attribution ---
+//
+// buildJudgeMessages passed only c.text, discarding source.title and
+// source.author. Whether a passage is worth quoting depends in part on what
+// work it comes from — the judge was being asked to weigh relevance with the
+// attribution removed.
+
+test('J: the judge prompt carries each passage title and author', () => {
+  const messages = buildJudgeMessages({
+    message: 'what about power?',
+    chunks: [
+      { text: 'Political power grows out of the barrel of a gun.',
+        source: { title: 'On Protracted War', author: 'Mao Zedong' } },
+      { text: 'The philosophers have only interpreted the world.',
+        source: { title: 'Theses on Feuerbach', author: 'Karl Marx' } },
+    ],
+  });
+  const joined = messages.map((m) => m.content).join('\n');
+  assert.ok(joined.includes('On Protracted War'), 'first title missing');
+  assert.ok(joined.includes('Mao Zedong'), 'first author missing');
+  assert.ok(joined.includes('Theses on Feuerbach'), 'second title missing');
+  assert.ok(joined.includes('Karl Marx'), 'second author missing');
+});
+
+test('J: a passage with no source metadata does not break the prompt', () => {
+  const messages = buildJudgeMessages({
+    message: 'm',
+    chunks: [{ text: 'A passage with no attribution recorded.' }],
+  });
+  const joined = messages.map((m) => m.content).join('\n');
+  assert.ok(joined.includes('A passage with no attribution recorded.'));
+});
+
 test('an affirmative judgement uses the corpus', async () => {
   const out = await shouldUseCorpus({
     message: 'm', chunks, llm: llmSaying('{"useCorpus": true, "reason": "direct"}'), config,
