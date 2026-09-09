@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ingestFiles } from '../src/corpus/ingest.js';
+import { chunkText } from '../src/corpus/chunk.js';
 
 const fakeLlm = {
   async embed({ input }) {
@@ -39,19 +40,55 @@ test('ingesting no files yields no records', async () => {
 });
 
 test('embeds in batches without dropping chunks', async () => {
+  // The previous version of this test built 20 short paragraphs, which
+  // chunkText collapses into a single chunk. batchSize: 3 therefore never
+  // triggered a second iteration and the "no chunks dropped" assertion was
+  // vacuously true over a one-element array — the test could not fail. These
+  // paragraphs are long enough to force several chunks, and the assertions
+  // now pin the batching arithmetic itself.
   const dir = await mkdtemp(join(tmpdir(), 'lubot-batch-'));
   try {
     const path = join(dir, 'long.txt');
-    const paragraphs = Array.from({ length: 20 }, (_, i) => `Paragraph number ${i}.`);
-    await writeFile(path, paragraphs.join('\n\n'));
+    const paragraphs = Array.from(
+      { length: 8 },
+      (_, i) => `Paragraph ${i} begins. ${`token${i} `.repeat(199).trim()}`,
+    );
+    const text = paragraphs.join('\n\n');
+    await writeFile(path, text);
+
+    const expected = chunkText(text);
+    assert.ok(expected.length >= 4, `fixture must force several chunks, got ${expected.length}`);
+
+    const batchSize = 3;
+    const batchSizes = [];
+    const countingLlm = {
+      async embed({ input }) {
+        batchSizes.push(input.length);
+        return input.map((t) => [t.length, 1, 0]);
+      },
+    };
 
     const records = await ingestFiles({
       files: [{ path, title: 'Long', author: 'A' }],
-      llm: fakeLlm,
+      llm: countingLlm,
       embedModel: 'embed',
-      batchSize: 3,
+      batchSize,
     });
 
+    // (a) one embed call per batch, and no batch larger than batchSize.
+    assert.equal(batchSizes.length, Math.ceil(expected.length / batchSize));
+    assert.ok(batchSizes.every((n) => n > 0 && n <= batchSize), `batch sizes: ${batchSizes}`);
+    assert.equal(batchSizes.reduce((a, b) => a + b, 0), expected.length);
+
+    // (b) every chunk appears exactly once, in order.
+    assert.equal(records.length, expected.length);
+    assert.deepEqual(records.map((r) => r.text), expected.map((c) => c.text));
+
+    // (c) record indices are sequential with no gaps or repeats.
+    assert.deepEqual(
+      records.map((r) => r.index),
+      Array.from({ length: expected.length }, (_, i) => i),
+    );
     assert.ok(records.every((r) => Array.isArray(r.vector) && r.vector.length === 3));
   } finally {
     await rm(dir, { recursive: true, force: true });
