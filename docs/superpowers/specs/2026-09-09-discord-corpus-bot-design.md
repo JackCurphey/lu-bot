@@ -196,16 +196,38 @@ The Discord bot token is a full credential. It lives only in `.env`, which is
 gitignored from the first commit. `.env.example` documents the required keys
 with empty values.
 
+## Models
+
+Verified against LM Studio's catalogue on 2026-09-09, not recalled.
+
+| Role | Model | Size |
+|---|---|---|
+| Chat | `lmstudio-community/Qwen3.6-27B-MLX-4bit` | 16.1 GB |
+| Judge | `lmstudio-community/Qwen3-4B-Instruct-2507-MLX-4bit` | ~2.5 GB |
+| Embedding | `text-embedding-nomic-embed-text-v1.5` (768-dim) | 84 MB |
+
+**Why the dense 27B and not the 35B-A3B MoE.** The MoE would generate far
+faster (3B active parameters), but at 20.4 GB it leaves no room for a resident
+judge model within the ~21 GB the GPU can address. Chat plus judge must fit
+together: 16.1 + 2.5 ≈ 18.6 GB fits with headroom for KV cache; 20.4 + 2.5 does
+not. Keeping the cheap two-stage trigger was judged more valuable than faster
+generation.
+
+**Why the Instruct judge and not base Qwen3-4B.** Base Qwen3 models are hybrid
+reasoning models that emit a thinking phase. A judge returning a structured
+yes/no on every message must be fast and terse; the Instruct variant skips
+thinking.
+
+MLX builds throughout — both runtimes are installed, and MLX is commonly
+10-40% faster than GGUF on Apple Silicon.
+
 ## Open questions
 
 - **Source texts.** Deferred by decision. No texts are added now; the bot runs
   with an empty corpus, persona-only. Which specific works, and where the files
   come from, is settled later. Marx is public domain; Mao's works are widely
   available via the Marxists Internet Archive. This no longer blocks the build.
-- **Persona detail.** The character is a Chinese Maoist with its own
-  personality, but name, voice, register, and behavioural rules are not yet
-  written. The persona file cannot be authored until these are decided.
-- **Model selection.** `Qwen3.6-35B-A3B` is a candidate from current sources
-  but unverified against LM Studio's catalogue. An embedding model has not yet
-  been chosen. Both require LM Studio first-run, which needs the user at the
-  keyboard.
+- **Persona detail.** Direction set: a Chinese Maoist, cheeky but serious.
+  Enough to write a first persona file against, explicitly as a starting point.
+  Voice, register, and behavioural rules will be tuned against real output
+  rather than settled up front.
