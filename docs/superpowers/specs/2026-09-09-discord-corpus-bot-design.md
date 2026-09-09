@@ -1,14 +1,19 @@
-# Discord Corpus Bot — Design
+# Lu Bot — Design
 
 **Date:** 2026-09-09
 **Status:** Awaiting review
 
 ## Purpose
 
-A Discord bot with a defined persona that answers questions about a corpus of
-political-philosophy primary texts (works by Marx and Mao), quoting them
-verbatim with attribution. It responds when directly mentioned, and can also
-volunteer a relevant quote unprompted in an allowlisted channel.
+Lu Bot is a Discord bot with its own personality, named after the Chinese
+weightlifter Lu Xiaojun. It converses in character, and can draw on a corpus of
+political-philosophy primary texts (works by Marx and Mao) when doing so adds
+something — quoting them verbatim with attribution. It responds when directly
+mentioned, and can also volunteer a relevant quote unprompted in an allowlisted
+channel.
+
+**The corpus starts empty.** Texts are added later; the ingest path exists from
+the start so that adding them is a data change, not a code change.
 
 All inference runs locally. No text or conversation leaves the machine.
 
@@ -92,6 +97,13 @@ This is what makes citation possible and cannot be reconstructed after ingest.
 **Storage.** A flat binary file of raw `Float32` vectors loaded into a typed
 array, plus a JSON sidecar holding chunk text and metadata. JSON for the
 vectors themselves would be roughly 150 MB and slow to parse at every startup.
+
+**Empty corpus is a supported state, not an edge case.** With zero chunks
+loaded, retrieval returns nothing, the trigger always reports that the corpus
+adds nothing, and Lu Bot operates as a persona-only conversationalist. Startup
+must not fail on a missing or empty corpus file, and this case gets its own
+test. Designing it in now costs nothing; retrofitting it later means auditing
+every retrieval call site.
 
 **Search.** Brute-force cosine similarity across all chunks, returning top-k.
 At this corpus size (~10k chunks) this is single-digit milliseconds. No vector
@@ -186,9 +198,10 @@ with empty values.
 
 ## Open questions
 
-- **Source texts.** Which specific works, and where do the text files come
-  from? Marx is public domain. Mao's works are widely available via the
-  Marxists Internet Archive. Needs deciding before ingest can be built.
+- **Source texts.** Deferred by decision. No texts are added now; the bot runs
+  with an empty corpus, persona-only. Which specific works, and where the files
+  come from, is settled later. Marx is public domain; Mao's works are widely
+  available via the Marxists Internet Archive. This no longer blocks the build.
 - **Persona detail.** The character is a Chinese Maoist with its own
   personality, but name, voice, register, and behavioural rules are not yet
   written. The persona file cannot be authored until these are decided.
