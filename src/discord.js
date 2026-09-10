@@ -37,6 +37,31 @@ export function truncateForDiscord(text, limit = DISCORD_REPLY_LIMIT) {
   return `${cut.trimEnd()}${ELLIPSIS}`;
 }
 
+// Discord's typing indicator expires after roughly ten seconds. A reply on the
+// deployment host takes 13-15s, and ~25s on the first message after a restart,
+// so one sendTyping() would lapse before the reply lands and the channel would
+// show nothing — indistinguishable from Lu ignoring the message.
+export const TYPING_REFRESH_MS = 8000;
+
+export function startTyping({
+  channel,
+  intervalMs = TYPING_REFRESH_MS,
+  setIntervalImpl = setInterval,
+  clearIntervalImpl = clearInterval,
+}) {
+  // Cosmetic. A failure here must never propagate into the reply path, so
+  // every call swallows its own rejection.
+  const send = () => { Promise.resolve(channel.sendTyping()).catch(() => {}); };
+
+  send();
+  const id = setIntervalImpl(send, intervalMs);
+  // Node holds the event loop open for a pending interval. Nothing here should
+  // keep the process alive on its own.
+  if (typeof id?.unref === 'function') id.unref();
+
+  return { stop: () => clearIntervalImpl(id) };
+}
+
 export async function startBot({ config, onMention }) {
   const client = new Client({
     intents: [
@@ -67,11 +92,16 @@ export async function startBot({ config, onMention }) {
     }
 
     const content = message.content.replace(/<@!?\d+>/g, '').trim();
+    const typing = startTyping({ channel: message.channel });
     try {
       const reply = await onMention({ content, channelId: message.channelId, authorId: message.author.id });
       if (reply) await message.reply(truncateForDiscord(reply));
     } catch (err) {
       console.error('Failed to handle mention:', err);
+    } finally {
+      // finally, not the try body: a dropped reply and a thrown error must
+      // both stop the indicator.
+      typing.stop();
     }
   });
 

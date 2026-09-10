@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldHandle, truncateForDiscord, DISCORD_REPLY_LIMIT } from '../src/discord.js';
+import { shouldHandle, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS } from '../src/discord.js';
 
 const opts = { botId: 'bot', allowedChannels: ['chan'] };
 const base = { authorId: 'human', authorIsBot: false, channelId: 'chan', mentionsBot: true };
@@ -65,4 +65,76 @@ test('F: a limit with no usable boundary still cuts hard rather than throwing', 
   const out = truncateForDiscord('x'.repeat(500), 20);
   assert.equal(out.length, 20);
   assert.ok(out.endsWith('…'));
+});
+
+// --- Typing indicator ---
+//
+// A reply takes 13-15s on the deployment host, and ~25s on the first message
+// after a restart. Discord's indicator expires after ~10s, so it is refreshed
+// on a timer rather than sent once.
+
+function stubChannel() {
+  const calls = [];
+  return { calls, sendTyping: async () => { calls.push(Date.now()); } };
+}
+
+function fakeTimers() {
+  let nextId = 1;
+  const timers = new Map();
+  return {
+    setIntervalImpl: (fn, ms) => { const id = nextId++; timers.set(id, { fn, ms }); return id; },
+    clearIntervalImpl: (id) => { timers.delete(id); },
+    tick: () => { for (const { fn } of timers.values()) fn(); },
+    active: () => timers.size,
+  };
+}
+
+test('typing is sent immediately, before any timer fires', async () => {
+  const channel = stubChannel();
+  const t = fakeTimers();
+  startTyping({ channel, setIntervalImpl: t.setIntervalImpl, clearIntervalImpl: t.clearIntervalImpl });
+  await new Promise((r) => setImmediate(r));
+
+  assert.equal(channel.calls.length, 1);
+});
+
+test('typing refreshes on each interval so it outlives Discord expiry', async () => {
+  const channel = stubChannel();
+  const t = fakeTimers();
+  startTyping({ channel, setIntervalImpl: t.setIntervalImpl, clearIntervalImpl: t.clearIntervalImpl });
+  await new Promise((r) => setImmediate(r));
+  t.tick();
+  t.tick();
+  await new Promise((r) => setImmediate(r));
+
+  assert.equal(channel.calls.length, 3);
+});
+
+test('the refresh interval is inside Discord ten-second expiry', () => {
+  assert.ok(TYPING_REFRESH_MS < 10000, `${TYPING_REFRESH_MS} would let the indicator lapse`);
+});
+
+test('stop clears the timer so Lu does not type forever', async () => {
+  const channel = stubChannel();
+  const t = fakeTimers();
+  const handle = startTyping({ channel, setIntervalImpl: t.setIntervalImpl, clearIntervalImpl: t.clearIntervalImpl });
+  handle.stop();
+
+  assert.equal(t.active(), 0);
+});
+
+test('a failing sendTyping does not reject into the caller', async () => {
+  const calls = [];
+  const channel = { sendTyping: async () => { calls.push(Date.now()); throw new Error('discord down'); } };
+  const t = fakeTimers();
+
+  // A cosmetic indicator must never be able to take down a reply, but the
+  // send must still have been attempted, and stop() must still clear the
+  // timer afterwards — a broken sendTyping must not silently disable either.
+  const handle = startTyping({ channel, setIntervalImpl: t.setIntervalImpl, clearIntervalImpl: t.clearIntervalImpl });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.length, 1);
+
+  handle.stop();
+  assert.equal(t.active(), 0);
 });
