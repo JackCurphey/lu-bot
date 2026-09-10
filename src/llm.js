@@ -6,7 +6,7 @@ export function createLlm({ baseUrl, fetchImpl = fetch }) {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      throw new Error(`LM Studio request to ${path} failed with status ${res.status}`);
+      throw new Error(`Model server request to ${path} failed with status ${res.status}`);
     }
     return res.json();
   }
