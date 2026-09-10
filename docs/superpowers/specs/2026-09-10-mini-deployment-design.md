@@ -126,13 +126,15 @@ settled.
 
 The mini has no Node and no Homebrew. `package.json` requires `node >=26`.
 
-Node is installed via a user-level version manager rather than the official
-`.pkg`, for two reasons: it needs no password, and it pins the version rather
-than leaving it to drift.
+Node is installed from the **official checksummed tarball**, unpacked into the
+user's home directory. Not the `.pkg` (needs a password, installs
+system-wide), and not a version manager (an extra third-party install script
+for a machine that will only ever run one Node version).
 
 The target is **Node v26.8.1**, the version the MacBook currently runs and
 under which all 159 tests pass. Matching it removes runtime version as a
-variable if behaviour differs between the two machines.
+variable if behaviour differs between the two machines. The `darwin-x64` build
+and its published SHA-256 were confirmed present on 2026-09-10.
 
 ### 3. Code delivery
 
@@ -161,10 +163,16 @@ LLM_EMBED_MODEL=nomic-embed-text
 `src/llm.js` posts plain OpenAI-compatible JSON to `/chat/completions` and
 `/embeddings`, so no client rewrite is expected.
 
-**This is an expectation, not a verified fact.** Whether Ollama's
-`/v1/embeddings` returns the `data[].embedding` shape `llm.js` destructures is
-unverified and is the first thing the implementation tests, before any
-deployment step depends on it.
+**Verified against the running server on 2026-09-10**, having been flagged as
+an assumption when this design was first written. Ollama's OpenAI-compatible
+endpoints return exactly the shapes `llm.js` destructures:
+
+- `/v1/chat/completions` → `choices[0].message.content`
+- `/v1/embeddings` → `data[].embedding`
+
+No client rewrite is required. The contract is pinned by tests in the
+implementation plan so that an Ollama upgrade changing it fails loudly rather
+than silently.
 
 ### 5. Code changes
 
