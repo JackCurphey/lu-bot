@@ -2,11 +2,13 @@ import { stripThinking } from './responder.js';
 import { withTimeout } from './timeout.js';
 
 // Kept deliberately short: on the mini's CPU almost all of this call's cost is
-// reading the prompt, not writing the one-word answer. DRAFT — finalised by
-// the measuring step (plan Task 10).
+// reading the prompt, not writing the one-word answer. Chosen by measurement on
+// the mini over a 40-example test set.
 export const ADDRESSEE_SYSTEM =
-  'You read the end of a Discord chat. Lu is a bot in it. ' +
-  'Answer YES if the last message is meant for Lu, NO if it is not. One word.';
+  'You read a Discord chat. Lu is a bot; humans also talk to each other. ' +
+  'Judge ONLY the last message: does it speak TO Lu (a question, reply, or ' +
+  'comment aimed at him), not just near him? If it addresses another named ' +
+  'person, the group, or nobody, answer NO. Otherwise YES. One word.';
 
 export function buildAddresseeMessages({ entries }) {
   const lines = entries.map((e) => `${e.isLu ? 'Lu' : e.name}: ${e.text}`).join('\n');
