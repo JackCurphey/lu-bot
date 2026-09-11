@@ -63,13 +63,29 @@ export function createConversation({
       : { prior: entries.slice(0, i), upTo: entries.slice(0, i + 1) };
   }
 
+  // A direct mention outranks an unjudged message: only "judge" and "chime"
+  // jobs can be bumped by a later arrival, never a pending "direct" one.
+  function priority(kind) {
+    return kind === 'direct' ? 1 : 0;
+  }
+
   // One reply per channel at a time. While busy, only the newest waiting job
-  // is kept; older ones are skipped and the log says why.
+  // of at-least-equal priority is kept; a job that arrives while a
+  // higher-priority one is pending is dropped instead of replacing it. Either
+  // way, the loser's log says why.
   function enqueue(channelId, job) {
     const state = channel(channelId);
     if (state.busy) {
-      if (state.pending) note(channelId, state.pending.entry, 'skipped: a newer message came in while i was busy');
-      state.pending = job;
+      if (!state.pending) {
+        state.pending = job;
+        return;
+      }
+      if (priority(job.kind) >= priority(state.pending.kind)) {
+        note(channelId, state.pending.entry, 'skipped: a newer message came in while i was busy');
+        state.pending = job;
+      } else {
+        note(channelId, job.entry, 'skipped: a message aimed at me was already waiting');
+      }
       return;
     }
     state.busy = true;

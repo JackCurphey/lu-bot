@@ -269,3 +269,44 @@ test('while busy, only the latest waiting message is handled afterwards', async 
   assert.deepEqual(s.calls.respond.map((r) => r.message), ['sam: @Lu one', 'sam: @Lu three']);
   assert.ok(s.decisions.find('chan', b.messageId).reasons.some((r) => r.startsWith('skipped')));
 });
+
+test('a waiting @mention is never bumped by an unjudged message', async () => {
+  const gates = [];
+  const s = setup({
+    respondWithReason: (args) => {
+      s.calls.respond.push(args);
+      return new Promise((resolve) => gates.push(() => resolve({ ok: true, reply: 'wot' })));
+    },
+    isAddressed: async ({ entries }) => { s.calls.judge.push(entries); return { yes: false, reason: '' }; },
+  });
+  s.seedLu();
+  const a = msg({ mentionsLu: true, text: '@Lu one' });
+  const b = msg({ mentionsLu: true, text: '@Lu two' });
+  const c = msg({ text: 'yeah same' });
+  await s.conversation.handleMessage(a, s.io);
+  await tick();
+  assert.equal(gates.length, 1, 'a should be in flight');
+  await s.conversation.handleMessage(b, s.io);
+  await s.conversation.handleMessage(c, s.io);
+  s.timers.fire(PAUSE_MS);
+  await tick();
+  gates[0]();
+  await tick(); await tick();
+  assert.equal(gates.length, 2, 'b should now be in flight');
+  gates[1]();
+  await s.conversation.idle('chan');
+  assert.deepEqual(s.calls.respond.map((r) => r.message), ['sam: @Lu one', 'sam: @Lu two']);
+  assert.ok(s.decisions.find('chan', c.messageId).reasons.includes('skipped: a message aimed at me was already waiting'));
+});
+
+test('a judge YES that fails to reply still posts the headache', async () => {
+  const s = setup({
+    respondWithReason: async () => ({ ok: false, reason: 'empty reply after stripping reasoning' }),
+  });
+  s.seedLu();
+  const m = msg({ text: 'ana did you see the match' });
+  await s.conversation.handleMessage(m, s.io);
+  s.timers.fire(PAUSE_MS);
+  await s.conversation.idle('chan');
+  assert.deepEqual(s.sent, [HEADACHE]);
+});
