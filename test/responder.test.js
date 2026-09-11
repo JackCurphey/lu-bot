@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessages, respond, stripThinking } from '../src/responder.js';
+import { buildMessages, respond, respondWithReason, stripThinking } from '../src/responder.js';
 
 const persona = 'You are Lu Bot.';
 const chunks = [{ text: 'Political power grows out of the barrel of a gun.', source: { title: 'T', author: 'A' } }];
@@ -242,4 +242,41 @@ test('E: with a corpus an undelimited attribution is still dropped', async () =>
     await respondWith(`As Ada Placeholder wrote in Some Work: ${INVENTED}`, NEUTRAL_CHUNKS),
     null,
   );
+});
+
+// --- Old Lu stage 1: failures carry their cause --------------------------------
+//
+// "lu explain" and the headache signal need to know why a reply was dropped.
+// respond() keeps returning null so every test above stays as it was.
+
+test('respondWithReason returns the reply when it passes', async () => {
+  const out = await respondWithReason({
+    message: 'hello', chunks: [], history: [], persona, llm: llmReturning('good morning comrade'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'good morning comrade' });
+});
+
+test('respondWithReason names an empty reply', async () => {
+  const out = await respondWithReason({
+    message: 'hello', chunks: [], history: [], persona, llm: llmReturning('<think>hmm</think>'), config,
+  });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /empty reply/);
+});
+
+test('respondWithReason names a failed quote check', async () => {
+  const out = await respondWithReason({
+    message: 'what did he say?', chunks, history: [], persona,
+    llm: llmReturning('He wrote, "This sentence appears in no supplied chunk at all."'), config,
+  });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /^quote check failed: /);
+});
+
+test('respondWithReason passes the abort signal to the model call', async () => {
+  let seen;
+  const llm = { async chat(args) { seen = args.signal; return 'ok comrade'; } };
+  const controller = new AbortController();
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config, signal: controller.signal });
+  assert.equal(seen, controller.signal);
 });

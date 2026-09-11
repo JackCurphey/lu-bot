@@ -33,13 +33,12 @@ export function buildMessages({ persona, chunks, history, message }) {
   ];
 }
 
-export async function respond({ message, chunks, history, persona, llm, config }) {
+export async function respondWithReason({ message, chunks, history, persona, llm, config, signal }) {
   const messages = buildMessages({ persona, chunks, history, message });
-  const raw = await llm.chat({ model: config.llm.chatModel, messages });
+  const raw = await llm.chat({ model: config.llm.chatModel, messages, signal });
   const reply = stripThinking(raw);
   if (reply === '') {
-    console.warn('Dropped reply — nothing left after stripping reasoning');
-    return null;
+    return { ok: false, reason: 'empty reply after stripping reasoning' };
   }
 
   // No passages were supplied, so nothing was offered to cite and there is no
@@ -53,9 +52,17 @@ export async function respond({ message, chunks, history, persona, llm, config }
       ...verdict.overlong.map((q) => `too long (${q.length} chars): ${q.slice(0, 60)}...`),
       ...verdict.unverifiable.map((reason) => `unverifiable: ${reason}`),
     ];
-    console.warn(`Dropped reply — ${reasons.join(' | ')}`);
-    return null;
+    return { ok: false, reason: `quote check failed: ${reasons.join(' | ')}` };
   }
 
-  return reply;
+  return { ok: true, reply };
+}
+
+export async function respond(args) {
+  const result = await respondWithReason(args);
+  if (!result.ok) {
+    console.warn(`Dropped reply — ${result.reason}`);
+    return null;
+  }
+  return result.reply;
 }
