@@ -3,12 +3,14 @@ import { join } from 'node:path';
 import { loadConfig, startupWarnings } from './config.js';
 import { createLlm } from './llm.js';
 import { loadPersona } from './persona.js';
-import { respond } from './responder.js';
+import { respondWithReason } from './responder.js';
 import { loadCorpus, search } from './corpus/store.js';
 import { shouldUseCorpus } from './judge.js';
 import { startBot } from './discord.js';
-
-const HISTORY_LIMIT = 12;
+import { createHistory } from './history.js';
+import { createDecisionLog } from './decisions.js';
+import { isAddressedToLu, hasModel } from './addressee.js';
+import { createConversation } from './conversation.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -37,7 +39,21 @@ console.log(
     : 'No corpus found. Running persona-only.',
 );
 
-const histories = new Map();
+// A missing judge model would otherwise surface as a 404 on every judge call.
+// Treat it as "never aimed at me" and say so once, at startup; direct address
+// keeps working.
+let addresseeAvailable = true;
+try {
+  addresseeAvailable = hasModel(await llm.listModels(), config.llm.addresseeModel);
+  if (!addresseeAvailable) {
+    console.warn(
+      `WARNING: judge model ${config.llm.addresseeModel} is not installed on the model server; ` +
+      'Lu will only answer @mentions, replies to him and his name.',
+    );
+  }
+} catch (err) {
+  console.warn(`WARNING: could not list installed models (${err.message}); assuming ${config.llm.addresseeModel} is there.`);
+}
 
 async function retrieve(content) {
   if (corpus.size === 0) return [];
@@ -47,29 +63,25 @@ async function retrieve(content) {
     .map((hit) => hit.chunk);
 }
 
+const conversation = createConversation({
+  config,
+  history: createHistory(config.history),
+  decisions: createDecisionLog(),
+  persona,
+  llm,
+  // Retrieval finds candidates; the corpus judge decides whether they earn a
+  // place in the prompt. A model handed passages tends to quote them.
+  async chooseChunks(text) {
+    const candidates = await retrieve(text);
+    return (await shouldUseCorpus({ message: text, chunks: candidates, llm, config })) ? candidates : [];
+  },
+  respondWithReason,
+  isAddressed: ({ entries }) => isAddressedToLu({ entries, llm, config, available: addresseeAvailable }),
+});
+
 await startBot({
   config,
-  async onMention({ content, channelId }) {
-    const history = histories.get(channelId) ?? [];
-
-    // Retrieval finds candidates; the judge decides whether they earn a place
-    // in the prompt. Without this gate a mention always passes passages to the
-    // chat model, and a model handed passages tends to quote them.
-    const candidates = await retrieve(content);
-    const useCorpus = await shouldUseCorpus({ message: content, chunks: candidates, llm, config });
-    const chunks = useCorpus ? candidates : [];
-
-    const reply = await respond({ message: content, chunks, history, persona, llm, config });
-
-    if (reply) {
-      histories.set(
-        channelId,
-        [...history, { role: 'user', content }, { role: 'assistant', content: reply }]
-          .slice(-HISTORY_LIMIT),
-      );
-    }
-    return reply;
-  },
+  onMessage: (entry, io) => conversation.handleMessage(entry, io),
 });
 
 console.log('Lu Bot is online.');
