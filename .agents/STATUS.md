@@ -1,7 +1,8 @@
 # Lu Bot — status
 
 **Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
-merged, **nothing pushed anywhere** (no git remote exists).
+merged. **Pushed to private GitHub repo https://github.com/JackCurphey/lu-bot**
+(all four branches; default branch `feat/mini-deployment`).
 
 ## Where it stands
 
@@ -51,16 +52,15 @@ it on return with `pmset -g log | grep -E "Sleep|Wake"`.
 - **FileVault is On.** Every power cut leaves the mini locked with no Ollama, no
   bot and no SSH until someone types the password at the machine. Turn it off, or
   accept manual unlock. Task 6's reboot test will fail until this is decided.
-- **GitHub repo** — deferred, not cancelled. The user has not authorised creating
-  one. Code currently exists only on the MacBook and (as files, no history) on the mini.
 
 ## Accepted known risk
 
 **The real Discord bot token is still in git history.** `.env.example` held the
 live token, guild ID and channel IDs from `568d300` until `d8ec09d` replaced them
 with placeholders. The user chose to scrub without rotating. The old values are
-still recoverable with `git show <old-sha>:.env.example`. This becomes a real
-exposure the moment the repo is shared or made public. Rotating the token in the
+still recoverable with `git show <old-sha>:.env.example` — **and that history is
+now on GitHub** (private repo, pushed 2026-09-11 at the user's request). It becomes
+a real exposure the moment the repo is shared, made public, or GitHub access leaks. Rotating the token in the
 Discord developer portal is the only step that makes those copies useless.
 
 ## Environment notes
