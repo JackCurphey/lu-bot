@@ -107,3 +107,54 @@ test('a failure names the endpoint, not a particular vendor', async () => {
     },
   );
 });
+
+// --- Old Lu stage 1: abort, token cap, model list -----------------------------
+
+function recordingFetch(payload, { status = 200 } = {}) {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: status >= 200 && status < 300, status, json: async () => payload };
+  };
+  return { fetchImpl, calls };
+}
+
+const chatPayload = { choices: [{ message: { role: 'assistant', content: 'YES' } }] };
+
+test('chat passes an abort signal through to fetch', async () => {
+  const { fetchImpl, calls } = recordingFetch(chatPayload);
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  const controller = new AbortController();
+  await llm.chat({ model: 'm', messages: [], signal: controller.signal });
+  assert.equal(calls[0].init.signal, controller.signal);
+});
+
+test('chat sends max_tokens only when maxTokens is given', async () => {
+  const { fetchImpl, calls } = recordingFetch(chatPayload);
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  await llm.chat({ model: 'm', messages: [], maxTokens: 3 });
+  await llm.chat({ model: 'm', messages: [] });
+  assert.equal(JSON.parse(calls[0].init.body).max_tokens, 3);
+  assert.equal('max_tokens' in JSON.parse(calls[1].init.body), false);
+});
+
+test('listModels GETs /models and returns the model ids', async () => {
+  const { fetchImpl, calls } = recordingFetch({
+    object: 'list',
+    data: [
+      { id: 'qwen3:4b-instruct', object: 'model', created: 1, owned_by: 'library' },
+      { id: 'nomic-embed-text:latest', object: 'model', created: 1, owned_by: 'library' },
+    ],
+  });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  assert.deepEqual(await llm.listModels(), ['qwen3:4b-instruct', 'nomic-embed-text:latest']);
+  assert.equal(calls[0].url, 'http://x/v1/models');
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.body, undefined);
+});
+
+test('listModels throws with the status on a non-2xx response', async () => {
+  const { fetchImpl } = recordingFetch({}, { status: 503 });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  await assert.rejects(() => llm.listModels(), (err) => err.message.includes('503'));
+});
