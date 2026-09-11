@@ -1,5 +1,13 @@
 # Lu Bot — status
 
+> **2026-09-11, new work: porting the original Lu's features into this bot.**
+> The repo now lives at `~/Claude/Lu/lu-bot` (moved from `~/Documents/lu-bot`).
+> The original Lu (Python, PC) is `JackCurphey/LU2`, checked out at
+> `~/Claude/Lu/LU2` on branch `initial-import`. Four stages; stage 1 spec:
+> `docs/superpowers/specs/2026-09-11-old-lu-stage1-design.md`, branch
+> `feat/old-lu-stage1`. Spec awaiting user review; no plan or code yet.
+> The mini-deployment status below is unchanged and still open.
+
 **Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
 merged. **Pushed to private GitHub repo https://github.com/JackCurphey/lu-bot**
 (all four branches; default branch `feat/mini-deployment`).
