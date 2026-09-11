@@ -5,7 +5,7 @@
 > The original Lu (Python, PC) is `JackCurphey/LU2`, checked out at
 > `~/Claude/Lu/LU2` on branch `initial-import`. Four stages; stage 1 spec:
 > `docs/superpowers/specs/2026-09-11-old-lu-stage1-design.md`, branch
-> `feat/old-lu-stage1`. Spec awaiting user review; no plan or code yet.
+> `feat/old-lu-stage1`. Spec approved; plan: `docs/superpowers/plans/2026-09-11-old-lu-stage1.md` (13 tasks). No code yet.
 > The mini-deployment status below is unchanged and still open.
 
 **Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
