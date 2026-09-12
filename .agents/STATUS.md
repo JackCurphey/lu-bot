@@ -2,13 +2,21 @@
 
 > **2026-09-12: stage 1 of the old-Lu port is built, reviewed and running on
 > the mini.**
+> **Reply length (2026-09-12, after the live check):** the user found replies
+> too long. The persona now asks for two or three sentences (40-60 words) and
+> `REPLY_MAX_TOKENS` (default 120) caps the generation; a reply cut at the cap
+> is trimmed back to a sentence end, never mid-word and never inside a
+> quotation (the trim balances every delimiter pair `src/quotes.js` knows).
+> Live: replies dropped from 120-200 words to ~45, and well under 20s.
+>
 > Repo: `~/Claude/Lu/lu-bot`. The original Lu (Python, PC) is
 > `JackCurphey/LU2`, checked out at `~/Claude/Lu/LU2` on branch
 > `initial-import` — it is the feature reference for stages 2-4 (nicknames,
 > memes, avatars, `!lu` help; long-term per-user memory and social credit;
 > `!learn`/`!corpus_status`/file ingest).
 >
-> Stage 1 (persona, when he speaks, what he hears) is at commit `0b2adb1` on
+> Stage 1 (persona, when he speaks, what he hears) plus the user-requested
+> shorter replies is at commit `24e63f6` on
 > branch `feat/old-lu-stage1` — **not merged, not pushed.** It is deployed and
 > running on the mini (one instance, deployed via rsync + `npm ci` +
 > `launchctl kickstart`). The live check in `#lu-bot-chat` (Cry's Cantina)
