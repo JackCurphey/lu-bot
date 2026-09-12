@@ -15,9 +15,20 @@
 > memes, avatars, `!lu` help; long-term per-user memory and social credit;
 > `!learn`/`!corpus_status`/file ingest).
 >
-> Stage 1 (persona, when he speaks, what he hears) plus the user-requested
-> shorter replies is at commit `24e63f6` on
-> branch `feat/old-lu-stage1` — **not merged, not pushed.** It is deployed and
+> Stage 1 (persona, when he speaks, what he hears), the user-requested shorter
+> replies, and self-renaming (Task 15/16) are **merged into
+> `feat/mini-deployment`** at merge commit `f4f5686` (2026-09-12). The
+> `feat/old-lu-stage1` branch was deleted after the merge (its tip was
+> `df36838`). **Not pushed to GitHub** — `feat/mini-deployment` is 29 commits
+> ahead of `origin/feat/mini-deployment`.
+>
+> **Nicknames:** Lu renames himself when asked, but only for members with
+> Discord's Manage Nicknames permission; a reset ("go back to your normal
+> name") is handled without the model at all. Resetting clears the server
+> nickname, which reveals his account name `Lü Xiaojun` — `LUPHER` was itself
+> a nickname. He is currently `COMRADE STONE` at the user's request.
+>
+> Previously said, still true: It is deployed and
 > running on the mini (one instance, deployed via rsync + `npm ci` +
 > `launchctl kickstart`). The live check in `#lu-bot-chat` (Cry's Cantina)
 > passed every item on the done-condition checklist, tested from the user's
