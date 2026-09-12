@@ -99,6 +99,9 @@ export function createConversation({
       state.busy = false;
     })().catch((err) => {
       state.busy = false;
+      // A stranded pending job must not be replayed after some later
+      // message's reply, out of order — drop it along with the failure.
+      state.pending = null;
       console.error('Conversation worker failed:', err);
     });
   }
@@ -119,14 +122,15 @@ export function createConversation({
 
   async function reply(channelId, entry, { direct }, rec) {
     const state = channel(channelId);
-    const typing = state.io.startTyping();
     const fail = async (reason) => {
       rec?.reasons.push(`reply failed: ${reason}`);
       // Nobody asked for a random chime-in, so a failed one stays silent.
       if (direct) await safeSend(state, HEADACHE);
     };
 
+    let typing;
     try {
+      typing = state.io.startTyping();
       let result;
       try {
         const { prior } = split(channelId, entry);
@@ -170,8 +174,9 @@ export function createConversation({
         rec.reasons.push('replied');
       }
     } finally {
-      // finally: a dropped reply and a thrown error must both stop the indicator.
-      typing.stop();
+      // finally: a dropped reply and a thrown error must both stop the
+      // indicator — guarded, since startTyping itself may be what threw.
+      typing?.stop();
     }
   }
 
@@ -211,10 +216,17 @@ export function createConversation({
       return;
     }
 
-    // Anything else ends a pending pause: the latest message is either aimed
-    // at Lu directly (answered below) or not for him at all.
-    const cancelled = pauser.cancel(entry.channelId);
-    if (cancelled) note(entry.channelId, cancelled, 'judge skipped: the conversation moved on during the pause');
+    // Only a message that is itself going to be answered as direct address
+    // (rules 2-4: mention, reply-to-Lu, keyword) cancels a pending pause. A
+    // random chime-in or anything ignored — including another bot's message,
+    // or a reply/mention aimed at someone else — leaves the pause running, so
+    // it still reaches the judge when it settles.
+    const directAddress = decision.outcome === 'reply'
+      && ['mention', 'reply-to-lu', 'keyword'].includes(decision.trigger);
+    if (directAddress) {
+      const cancelled = pauser.cancel(entry.channelId);
+      if (cancelled) note(entry.channelId, cancelled, 'judge skipped: a message aimed at me came first');
+    }
 
     if (decision.outcome === 'ignore') return;
     if (decision.trigger === 'chime') state.lastChimeAt = now();

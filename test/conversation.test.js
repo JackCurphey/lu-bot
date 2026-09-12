@@ -173,10 +173,36 @@ test('a burst of messages costs one judge call, for the latest', async () => {
 test('direct address during a pause is answered at once and the judge is skipped', async () => {
   const s = setup();
   s.seedLu();
-  await s.conversation.handleMessage(msg({ text: 'hmm' }), s.io);
+  const first = msg({ text: 'hmm' });
+  await s.conversation.handleMessage(first, s.io);
   await say(s, msg({ mentionsLu: true, text: '@Lu answer me' }));
   assert.equal(s.timers.count(PAUSE_MS), 0);
   assert.equal(s.calls.judge.length, 0);
+  assert.deepEqual(s.sent, ['wot']);
+  assert.ok(
+    s.decisions.find('chan', first.messageId).reasons.includes('judge skipped: a message aimed at me came first'),
+  );
+});
+
+test('a bot chiming in during a pause does not cancel it: the judge still runs', async () => {
+  const s = setup();
+  s.seedLu();
+  await s.conversation.handleMessage(msg({ text: 'hmm' }), s.io);
+  await say(s, msg({ isBot: true, name: 'otherbot', text: 'beep boop' }));
+  s.timers.fire(PAUSE_MS);
+  await s.conversation.idle('chan');
+  assert.equal(s.calls.judge.length, 1);
+  assert.deepEqual(s.sent, ['wot']);
+});
+
+test('a reply-to-someone-else during a pause does not cancel it: the judge still runs', async () => {
+  const s = setup();
+  s.seedLu();
+  await s.conversation.handleMessage(msg({ text: 'hmm' }), s.io);
+  await say(s, msg({ repliesToOther: true, text: 'yeah exactly' }));
+  s.timers.fire(PAUSE_MS);
+  await s.conversation.idle('chan');
+  assert.equal(s.calls.judge.length, 1);
   assert.deepEqual(s.sent, ['wot']);
 });
 
@@ -297,6 +323,27 @@ test('a waiting @mention is never bumped by an unjudged message', async () => {
   await s.conversation.idle('chan');
   assert.deepEqual(s.calls.respond.map((r) => r.message), ['sam: @Lu one', 'sam: @Lu two']);
   assert.ok(s.decisions.find('chan', c.messageId).reasons.includes('skipped: a message aimed at me was already waiting'));
+});
+
+test('a throw in the worker does not strand a pending job for out-of-order replay', async () => {
+  let calls = 0;
+  const s = setup({
+    respondWithReason: async (args) => {
+      calls++;
+      if (calls === 1) throw new Error('boom');
+      return { ok: true, reply: 'wot' };
+    },
+  });
+  const a = msg({ mentionsLu: true, text: '@Lu one' });
+  const b = msg({ mentionsLu: true, text: '@Lu two' });
+  await s.conversation.handleMessage(a, s.io);
+  await s.conversation.handleMessage(b, s.io);
+  await s.conversation.idle('chan');
+  // b must be answered once, in its own turn — not replayed after some later message.
+  assert.deepEqual(s.sent, [HEADACHE, 'wot']);
+  await s.conversation.handleMessage(msg({ mentionsLu: true, text: '@Lu three' }), s.io);
+  await s.conversation.idle('chan');
+  assert.deepEqual(s.sent, [HEADACHE, 'wot', 'wot']);
 });
 
 test('a judge YES that fails to reply still posts the headache', async () => {

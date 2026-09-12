@@ -95,7 +95,7 @@ export function loadConfig(env) {
 
 // Configuration that parses cleanly but leaves the bot unable to do anything.
 // .env.example ships DISCORD_ALLOWED_CHANNELS empty, and with it empty
-// shouldHandle rejects every message — so the bot connects, reports itself
+// shouldObserve rejects every message — so the bot connects, reports itself
 // online, and ignores everyone, with nothing anywhere explaining why.
 export function startupWarnings(config) {
   const warnings = [];
