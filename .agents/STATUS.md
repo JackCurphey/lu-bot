@@ -63,6 +63,17 @@
 > save-getfile and PDF/Word ingest. Each gets its own spec and plan, mining
 > `~/Claude/Lu/LU2` for the reference behaviour.
 >
+> **Parked (2026-09-12): web search for Lu.** Brainstormed to "approaches
+> agreed, provider undecided", then parked at the user's request. No code.
+> Write-up: `docs/superpowers/specs/2026-09-12-web-search-exploration.md`.
+> It holds the hardware finding that shapes the whole idea — the mini prefills
+> at 45.8 tok/s, so ~22s per 1,000 prompt tokens, which means Lu cannot read
+> and summarise web pages himself and compression must happen off-box — plus
+> the decisions taken and verified provider research with its unverified gaps
+> marked. It also records that the 4096-token context window is an Ollama
+> default rather than a hardware ceiling, which bears on open item 4 above and
+> on `DF9` in `.agents/deferrals.md`.
+>
 > The mini-deployment status below is unchanged except where corrected inline.
 
 **Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
