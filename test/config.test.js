@@ -121,7 +121,12 @@ test('stage 1 defaults', () => {
   assert.equal(cfg.trigger.windowMinutes, 5);
   assert.equal(cfg.trigger.pauseSeconds, 3);
   assert.equal(cfg.trigger.addresseeTimeoutSeconds, 30);
-  assert.deepEqual(cfg.reply, { timeoutSeconds: 90 });
+  assert.deepEqual(cfg.reply, { timeoutSeconds: 90, maxTokens: 120 });
+});
+
+test('REPLY_MAX_TOKENS overrides the default', () => {
+  const cfg = loadConfig({ ...valid, REPLY_MAX_TOKENS: '200' });
+  assert.equal(cfg.reply.maxTokens, 200);
 });
 
 // A bounded judge prompt (see src/addressee.js) still runs ~250-300 tokens and

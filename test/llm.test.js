@@ -158,3 +158,30 @@ test('listModels throws with the status on a non-2xx response', async () => {
   const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
   await assert.rejects(() => llm.listModels(), (err) => err.message.includes('503'));
 });
+
+// --- Task 14: chatWithFinish reports the finish reason -----------------------
+
+test('chatWithFinish returns the content and finish_reason', async () => {
+  const { fetchImpl } = recordingFetch({
+    choices: [{ message: { role: 'assistant', content: 'YES' }, finish_reason: 'length' }],
+  });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  const out = await llm.chatWithFinish({ model: 'm', messages: [] });
+  assert.deepEqual(out, { content: 'YES', finishReason: 'length' });
+});
+
+test('chatWithFinish reports finishReason null when the field is absent', async () => {
+  const { fetchImpl } = recordingFetch(chatPayload);
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  const out = await llm.chatWithFinish({ model: 'm', messages: [] });
+  assert.equal(out.finishReason, null);
+});
+
+test('chatWithFinish sends max_tokens only when maxTokens is given', async () => {
+  const { fetchImpl, calls } = recordingFetch(chatPayload);
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  await llm.chatWithFinish({ model: 'm', messages: [], maxTokens: 3 });
+  await llm.chatWithFinish({ model: 'm', messages: [] });
+  assert.equal(JSON.parse(calls[0].init.body).max_tokens, 3);
+  assert.equal('max_tokens' in JSON.parse(calls[1].init.body), false);
+});

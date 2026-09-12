@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessages, respond, respondWithReason, stripThinking } from '../src/responder.js';
+import { buildMessages, respond, respondWithReason, stripThinking, trimCutOff } from '../src/responder.js';
 
 const persona = 'You are Lu Bot.';
 const chunks = [{ text: 'Political power grows out of the barrel of a gun.', source: { title: 'T', author: 'A' } }];
-const config = { trigger: { maxQuoteChars: 400 }, llm: { chatModel: 'chat' } };
+const config = { trigger: { maxQuoteChars: 400 }, llm: { chatModel: 'chat' }, reply: { maxTokens: 120 } };
 
-const llmReturning = (content) => ({ async chat() { return content; } });
+const llmReturning = (content, finishReason = 'stop') => ({
+  async chatWithFinish() { return { content, finishReason }; },
+});
 
 test('system message carries the persona', () => {
   const messages = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
@@ -275,8 +277,53 @@ test('respondWithReason names a failed quote check', async () => {
 
 test('respondWithReason passes the abort signal to the model call', async () => {
   let seen;
-  const llm = { async chat(args) { seen = args.signal; return 'ok comrade'; } };
+  const llm = {
+    async chatWithFinish(args) { seen = args.signal; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
   const controller = new AbortController();
   await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config, signal: controller.signal });
   assert.equal(seen, controller.signal);
+});
+
+// --- Task 14: shorter replies -------------------------------------------------
+
+test('respondWithReason passes config.reply.maxTokens to the model call', async () => {
+  let seenMaxTokens;
+  const llm = {
+    async chatWithFinish(args) {
+      seenMaxTokens = args.maxTokens;
+      return { content: 'good morning comrade', finishReason: 'stop' };
+    },
+  };
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config });
+  assert.equal(seenMaxTokens, 120);
+});
+
+test('a reply with finishReason stop is returned untouched, even without trailing punctuation', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('good morning comrade', 'stop'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'good morning comrade' });
+});
+
+test('a reply with finishReason length that ends mid-sentence is trimmed to the last sentence end', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('the revolution never sleeps. it will contin', 'length'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'the revolution never sleeps.' });
+});
+
+test('a reply with finishReason length and no sentence end anywhere is trimmed at the last whole word', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('the revolution never sleeps and it will contin', 'length'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'the revolution never sleeps and it will' });
+});
+
+test('trimCutOff leaves a boundary in the first half alone, keeping the tail\'s last whole word', () => {
+  const text = 'ok. ' + 'word '.repeat(20).trim() + ' contin';
+  assert.equal(trimCutOff(text), 'ok. ' + 'word '.repeat(20).trim());
 });

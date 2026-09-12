@@ -20,6 +20,17 @@ export function createLlm({ baseUrl, fetchImpl = fetch }) {
       return json.choices[0].message.content;
     },
 
+    // The reply path needs to know whether a reply was cut short by the token
+    // cap, so it can trim a half-finished sentence. chat() keeps its simpler
+    // string contract for the judges, which never hit the cap.
+    async chatWithFinish({ model, messages, temperature = 0.8, maxTokens, signal }) {
+      const body = { model, messages, temperature };
+      if (maxTokens !== undefined) body.max_tokens = maxTokens;
+      const json = await request('/chat/completions', { body, signal });
+      const choice = json.choices[0];
+      return { content: choice.message.content, finishReason: choice.finish_reason ?? null };
+    },
+
     async embed({ model, input }) {
       const json = await request('/embeddings', { body: { model, input } });
       return json.data.map((d) => d.embedding);

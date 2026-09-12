@@ -95,6 +95,7 @@ export function loadConfig(env) {
     },
     reply: {
       timeoutSeconds: num(env, 'REPLY_TIMEOUT_SECONDS', 90),
+      maxTokens: num(env, 'REPLY_MAX_TOKENS', 120),
     },
   };
 }

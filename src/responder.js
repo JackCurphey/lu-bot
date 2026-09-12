@@ -33,10 +33,32 @@ export function buildMessages({ persona, chunks, history, message }) {
   ];
 }
 
+export function trimCutOff(text) {
+  const s = String(text ?? '');
+  const boundary = Math.max(
+    s.lastIndexOf('. '), s.lastIndexOf('! '), s.lastIndexOf('? '), s.lastIndexOf('\n'),
+    s.lastIndexOf('。'), s.lastIndexOf('！'), s.lastIndexOf('？'),
+  );
+  // Only honour a boundary in the second half; otherwise a reply that opens
+  // with one short sentence would lose nearly everything.
+  if (boundary >= Math.floor(s.length / 2)) return s.slice(0, boundary + 1).trimEnd();
+  const lastSpace = s.lastIndexOf(' ');
+  return (lastSpace > 0 ? s.slice(0, lastSpace) : s).trimEnd();
+}
+
 export async function respondWithReason({ message, chunks, history, persona, llm, config, signal }) {
   const messages = buildMessages({ persona, chunks, history, message });
-  const raw = await llm.chat({ model: config.llm.chatModel, messages, signal });
-  const reply = stripThinking(raw);
+  const { content, finishReason } = await llm.chatWithFinish({
+    model: config.llm.chatModel,
+    messages,
+    maxTokens: config.reply.maxTokens,
+    signal,
+  });
+  const stripped = stripThinking(content);
+  // Cut off at the cap: drop the half-finished tail so he never stops
+  // mid-sentence. Lu writes with minimal punctuation by design, so a reply
+  // with no sentence end at all keeps its last whole word instead.
+  const reply = finishReason === 'length' ? trimCutOff(stripped) : stripped;
   if (reply === '') {
     return { ok: false, reason: 'empty reply after stripping reasoning' };
   }
