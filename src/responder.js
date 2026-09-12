@@ -1,4 +1,4 @@
-import { verifyQuotes, checkQuoteLength } from './quotes.js';
+import { verifyQuotes, checkQuoteLength, UNAMBIGUOUS_PAIRS } from './quotes.js';
 
 // The chat model emits reasoning tokens on every reply, and none of
 // chat_template_kwargs, /no_think or reasoning_effort disables it through LM
@@ -42,13 +42,24 @@ const CUT_OFF_TERMINATORS = ['. ', '! ', '? ', '\n', '。', '！', '？'];
 // *inside* that quotation. Cutting there would discard the closing
 // delimiter, turning a reply whose quotation was valid before the trim into
 // one verifyQuotes rejects outright: silence for a reply that was fine.
-// Only the two delimiter styles the brief covers are checked here (straight
-// double quotes and 「」); a trim must never invalidate a quotation.
+// Every unambiguous delimiter pair src/quotes.js recognises is checked here,
+// not just straight double quotes and 「」 — quotes.js independently treats
+// an unpaired occurrence of any of its other pairs (『』, «», 【】, ﹁﹂, 〈〉,
+// 《》) as an unverifiable quote, so a trim that ignores those families can
+// still leave one unpaired and reproduce the exact silence bug this function
+// exists to prevent, just through a different delimiter. The table is
+// imported from quotes.js rather than duplicated here so the two cannot
+// drift apart. Straight double quotes stay a special case (the same
+// character opens and closes, so only the total count can be checked); every
+// bracket-style pair needs equal open and close counts.
 function quotesBalanced(text) {
   const straight = (text.match(/"/g) ?? []).length;
-  const open = (text.match(/「/g) ?? []).length;
-  const close = (text.match(/」/g) ?? []).length;
-  return straight % 2 === 0 && open === close;
+  if (straight % 2 !== 0) return false;
+  return UNAMBIGUOUS_PAIRS.every(({ open, close }) => {
+    const opens = (text.match(new RegExp(open, 'gu')) ?? []).length;
+    const closes = (text.match(new RegExp(close, 'gu')) ?? []).length;
+    return opens === closes;
+  });
 }
 
 function allIndicesOf(s, needle) {

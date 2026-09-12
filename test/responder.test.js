@@ -375,6 +375,52 @@ test('trimCutOff behaves exactly as before on text with no quotations', () => {
   assert.equal(trimCutOff(text), 'the revolution never sleeps.');
 });
 
+// --- Task 14 fix round 2: the balance check only knew two delimiter styles -
+//
+// quotesBalanced hardcoded " and 「」 only. src/quotes.js independently
+// recognises several other unambiguous pairs (『』, «», 【】, ﹁﹂, 〈〉, 《》)
+// and treats an unpaired occurrence of any of them as an unverifiable quote.
+// 《…》 is the standard Chinese convention for a book or article title, so a
+// length-capped reply could be trimmed at a boundary that leaves a 《
+// unpaired — reproducing the exact silence bug fix round 1 closed, through a
+// delimiter family the round 1 fix never looked at.
+
+// Same construction as the round 1 corner-bracket case: the "。" right
+// before the closing 》 sits past the halfway point, so a balance check that
+// does not know about 《》 accepts that boundary and discards the 》.
+const CJK_TITLE_CUT_OFF_TEXT = '他说《权力来自枪杆子。绝不能有丝毫松懈。》而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a 《》 title citation', () => {
+  const out = trimCutOff(CJK_TITLE_CUT_OFF_TEXT);
+  const openCount = (out.match(/《/g) ?? []).length;
+  const closeCount = (out.match(/》/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 《》 in: ${out}`);
+});
+
+// Same construction again with 『』 (book/nested marks), to prove the fix
+// covers the whole table rather than special-casing 《》 alone.
+const BOOK_MARK_CUT_OFF_TEXT = '他说『权力来自枪杆子。绝不能有丝毫松懈。』而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a 『』 quotation', () => {
+  const out = trimCutOff(BOOK_MARK_CUT_OFF_TEXT);
+  const openCount = (out.match(/『/g) ?? []).length;
+  const closeCount = (out.match(/』/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 『』 in: ${out}`);
+});
+
+// Gap 2: the last-resort word-boundary fallback (`if (!quotesBalanced(fallback))
+// return s;`) had no test reaching it. This text has no sentence terminator
+// anywhere at all, so the boundary-selection loop finds no candidates and
+// falls straight through to the last-whole-word cut — which still leaves the
+// opening 《 with no closing partner anywhere in the string. The fallback
+// must be rejected too, returning the text untrimmed.
+const NO_BOUNDARY_UNPAIRED_TEXT = 'he said 《Political power grows out of the barrel of a gun and comrades kno';
+
+test('trimCutOff returns the text untrimmed when even the word-boundary fallback would leave a delimiter unpaired', () => {
+  const out = trimCutOff(NO_BOUNDARY_UNPAIRED_TEXT);
+  assert.equal(out, NO_BOUNDARY_UNPAIRED_TEXT);
+});
+
 test('end-to-end: a length-cut reply that quotes a corpus chunk verbatim and trails off still passes', async () => {
   const chunkText = 'Political power grows out of the barrel of a gun. It brooks no half measures.';
   const trailingOffChunks = [{ text: chunkText, source: { title: 'T', author: 'A' } }];
