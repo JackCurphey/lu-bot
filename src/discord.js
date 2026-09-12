@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 
 // Every message in an allowed channel is passed on, so Lu can follow the
 // conversation. Whether he answers is decided later, in attention.js.
@@ -31,6 +31,10 @@ export function toEntry(view, { botId }) {
     repliesToOther: view.repliedUserId != null && view.repliedUserId !== botId,
     at: view.createdTimestamp,
     text,
+    // Default false when absent so existing test fixtures (built before this
+    // task) keep working without adding these two fields to every one.
+    authorCanManageNicknames: view.authorCanManageNicknames ?? false,
+    inGuild: view.inGuild ?? false,
   };
 }
 
@@ -43,6 +47,18 @@ export function createChannelIo(channel) {
       return sent?.id ?? null;
     },
     startTyping: () => startTyping({ channel }),
+    // null clears the nickname (back to the default name).
+    async applyNickname(name) {
+      const me = channel.guild?.members?.me;
+      if (!me) return { ok: false, reason: 'notInGuild' };
+      try {
+        await me.setNickname(name);
+        return { ok: true };
+      } catch (err) {
+        console.warn(`Nickname change refused: ${err.message}`);
+        return { ok: false, reason: 'refused' };
+      }
+    },
   };
 }
 
@@ -117,6 +133,8 @@ function viewOf(message) {
     })),
     repliedUserId: message.mentions.repliedUser?.id ?? null,
     createdTimestamp: message.createdTimestamp,
+    authorCanManageNicknames: message.member?.permissions?.has(PermissionsBitField.Flags.ManageNicknames) ?? false,
+    inGuild: Boolean(message.guild),
   };
 }
 

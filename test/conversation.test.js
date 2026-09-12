@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createConversation, HEADACHE } from '../src/conversation.js';
 import { createHistory } from '../src/history.js';
 import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
+import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 
 const config = {
   trigger: {
@@ -11,6 +12,7 @@ const config = {
   },
   reply: { timeoutSeconds: 90 },
   llm: { chatModel: 'chat' },
+  nickname: { enabled: true, requirePermission: true },
 };
 const T0 = 1_000_000;
 const PAUSE_MS = 3000;
@@ -39,21 +41,25 @@ function msg(over = {}) {
   return {
     messageId: `m${seq}`, channelId: 'chan', authorId: 'sam', name: 'sam', isBot: false, isLu: false,
     mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
-    at: T0, text: 'hello', ...over,
+    at: T0, text: 'hello', authorCanManageNicknames: true, inGuild: true, ...over,
   };
 }
 const luSaid = (text = 'the state is a tool') => msg({ authorId: 'lu', name: 'Lu', isLu: true, isBot: true, text });
 
-function setup(over = {}) {
+function setup({ applyNickname, ...over } = {}) {
   const timers = fakeTimers();
   const history = createHistory({ limit: 20, trimTo: 10 });
   const decisions = createDecisionLog();
-  const calls = { respond: [], judge: [] };
+  const calls = { respond: [], judge: [], applyNickname: [] };
   const sent = [];
   let typingStarts = 0; let typingStops = 0;
   const io = {
     async send(text) { sent.push(text); return `sent${sent.length}`; },
     startTyping() { typingStarts++; return { stop() { typingStops++; } }; },
+    async applyNickname(name) {
+      calls.applyNickname.push(name);
+      return applyNickname ? applyNickname(name) : { ok: true };
+    },
   };
   const conversation = createConversation({
     config, history, decisions, persona: 'P', llm: {},
@@ -267,6 +273,97 @@ test('lu explain with nothing recorded says it has no record', async () => {
   const s = setup();
   await say(s, msg({ text: 'lu explain' }));
   assert.deepEqual(s.sent, [NOT_FOUND]);
+});
+
+// --- Task 15: Lu can change his own nickname -----------------------------------
+
+test('a rename request injects the instruction into respondWithReason\'s args; an ordinary message does not', async () => {
+  const s = setup();
+  await say(s, msg({ mentionsLu: true, text: '@Lu change your name to Bob' }));
+  assert.equal(s.calls.respond[0].extraInstruction, NICKNAME_INSTRUCTION);
+  await say(s, msg({ mentionsLu: true, text: '@Lu hello there' }));
+  assert.equal(s.calls.respond[1].extraInstruction, undefined);
+});
+
+test('a reply containing the marker is stripped before posting, applies the nickname, and the decision records it', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure comrade\nNICKNAME: Bob\nglad to help' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.sent, ['sure comrade\nglad to help']);
+  assert.deepEqual(s.calls.applyNickname, ['Bob']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.some((r) => r.includes('changed nickname to "Bob"')));
+});
+
+test('NICKNAME: RESET calls applyNickname(null)', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'ok\nNICKNAME: RESET' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu go back to your default name' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, [null]);
+  assert.deepEqual(s.sent, ['ok']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('reset nickname to the default'));
+});
+
+test('asker without Manage Nicknames: no applyNickname call, noPermission line appended', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob', authorCanManageNicknames: false });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.noPermission}`]);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('nickname change refused: asker lacks Manage Nicknames'));
+});
+
+test('applyNickname returning { ok: false, reason: "refused" } appends the refused line', async () => {
+  const s = setup({
+    respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }),
+    applyNickname: async () => ({ ok: false, reason: 'refused' }),
+  });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.refused}`]);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('nickname change failed: refused'));
+});
+
+test('a marker in a reply to a message that never asked is stripped, no applyNickname call, reason recorded', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'random\nNICKNAME: Bob' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu hows it going' });
+  await say(s, m);
+  assert.deepEqual(s.sent, ['random']);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('ignored a NICKNAME line nobody asked for'));
+});
+
+test('a reply that is only a marker and succeeds posts the headache rather than an empty message', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'NICKNAME: Bob' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.sent, [HEADACHE]);
+  assert.deepEqual(s.calls.applyNickname, ['Bob']);
+});
+
+test('a reply that is only a marker and fails posts the status line alone, never empty', async () => {
+  const s = setup({
+    respondWithReason: async () => ({ ok: true, reply: 'NICKNAME: Bob' }),
+    applyNickname: async () => ({ ok: false, reason: 'refused' }),
+  });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.sent, [NICKNAME_LINES.refused]);
+});
+
+test('not in a guild refuses the rename before checking permission', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob', inGuild: false });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.notInGuild}`]);
+});
+
+test('a name over 32 characters is refused with the tooLong line', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: `sure\nNICKNAME: ${'a'.repeat(33)}` }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to something long' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.tooLong}`]);
 });
 
 // --- One reply at a time -------------------------------------------------------

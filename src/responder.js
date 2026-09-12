@@ -18,16 +18,21 @@ export function stripThinking(text) {
     .trim();
 }
 
-export function buildMessages({ persona, chunks, history, message }) {
+export function buildMessages({ persona, chunks, history, message, extraInstruction }) {
   const corpusBlock = chunks.length > 0
     ? [
         'Passages available to you. You may quote from these and only these:',
         ...chunks.map((c, i) => `[${i + 1}] From "${c.source.title}" by ${c.source.author}:\n${c.text}`),
       ].join('\n\n')
     : 'No passages were retrieved for this message. Reply conversationally without quoting.';
+  // Present only when a message actually asked for it (see src/nickname.js) —
+  // an ordinary reply's system message must stay byte-identical to before.
+  const systemContent = extraInstruction
+    ? `${persona}\n\n---\n\n${corpusBlock}\n\n---\n\n${extraInstruction}`
+    : `${persona}\n\n---\n\n${corpusBlock}`;
 
   return [
-    { role: 'system', content: `${persona}\n\n---\n\n${corpusBlock}` },
+    { role: 'system', content: systemContent },
     ...history,
     { role: 'user', content: message },
   ];
@@ -101,8 +106,8 @@ export function trimCutOff(text) {
   return fallback.trimEnd();
 }
 
-export async function respondWithReason({ message, chunks, history, persona, llm, config, signal }) {
-  const messages = buildMessages({ persona, chunks, history, message });
+export async function respondWithReason({ message, chunks, history, persona, llm, config, signal, extraInstruction }) {
+  const messages = buildMessages({ persona, chunks, history, message, extraInstruction });
   const { content, finishReason } = await llm.chatWithFinish({
     model: config.llm.chatModel,
     messages,

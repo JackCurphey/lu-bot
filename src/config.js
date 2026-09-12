@@ -97,6 +97,12 @@ export function loadConfig(env) {
       timeoutSeconds: num(env, 'REPLY_TIMEOUT_SECONDS', 90),
       maxTokens: num(env, 'REPLY_MAX_TOKENS', 120),
     },
+    nickname: {
+      enabled: (env.NICKNAME_ENABLED ?? 'true') !== 'false',
+      // Matches the original bot: only members with Manage Nicknames may ask.
+      // Can be turned off to let anyone ask.
+      requirePermission: (env.NICKNAME_REQUIRE_PERMISSION ?? 'true') !== 'false',
+    },
   };
 }
 

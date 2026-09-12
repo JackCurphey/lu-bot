@@ -4,6 +4,13 @@ import { toChatTurns } from './history.js';
 import { EXPLAIN_RE, NOT_FOUND, formatDecision } from './decisions.js';
 import { withTimeout, TimeoutError } from './timeout.js';
 import { truncateForDiscord } from './discord.js';
+import { NICKNAME_REQUEST_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
+
+// validateNickname's failure reasons that have a matching in-character line.
+// 'empty' has no line of its own (it only arises from a hand-crafted marker
+// like "NICKNAME: ***" — the model is instructed never to send that), so it
+// falls through to no status line, same as any other unmapped reason.
+const VALIDATION_LINES = { 'too-long': 'tooLong', mentions: 'mentions' };
 
 // In character, and fixed, so the group reads it as "something broke" while
 // anyone else just sees Lu having a bad moment. The real cause is in the
@@ -131,6 +138,7 @@ export function createConversation({
     let typing;
     try {
       typing = state.io.startTyping();
+      const asksRename = config.nickname.enabled && NICKNAME_REQUEST_RE.test(entry.text);
       let result;
       try {
         const { prior } = split(channelId, entry);
@@ -144,6 +152,7 @@ export function createConversation({
             llm,
             config,
             signal,
+            extraInstruction: asksRename ? NICKNAME_INSTRUCTION : undefined,
           });
         }, config.reply.timeoutSeconds * 1000, { setTimeoutImpl, clearTimeoutImpl });
       } catch (err) {
@@ -158,7 +167,53 @@ export function createConversation({
         return;
       }
 
-      const text = truncateForDiscord(result.reply);
+      // The marker never reaches Discord, whatever else happens to it — strip
+      // it before any of the outcomes below, none of which post it back.
+      const { text: strippedText, request } = extractNickname(result.reply);
+      let statusLine = null;
+      if (!request) {
+        // No marker: nothing to do.
+      } else if (!asksRename) {
+        rec?.reasons.push('ignored a NICKNAME line nobody asked for');
+      } else if (!entry.inGuild) {
+        statusLine = NICKNAME_LINES.notInGuild;
+        rec?.reasons.push('nickname change refused: not in a server');
+      } else if (config.nickname.requirePermission && !entry.authorCanManageNicknames) {
+        statusLine = NICKNAME_LINES.noPermission;
+        rec?.reasons.push('nickname change refused: asker lacks Manage Nicknames');
+      } else if (request.reset) {
+        const outcome = await state.io.applyNickname(null);
+        if (outcome.ok) {
+          rec?.reasons.push('reset nickname to the default');
+        } else {
+          statusLine = NICKNAME_LINES[outcome.reason] ?? null;
+          rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
+        }
+      } else {
+        const validation = validateNickname(request.name);
+        if (!validation.ok) {
+          statusLine = NICKNAME_LINES[VALIDATION_LINES[validation.reason]] ?? null;
+          rec?.reasons.push(`nickname change refused: ${validation.reason}`);
+        } else {
+          const outcome = await state.io.applyNickname(validation.name);
+          if (outcome.ok) {
+            rec?.reasons.push(`changed nickname to "${validation.name}"`);
+          } else {
+            statusLine = NICKNAME_LINES[outcome.reason] ?? null;
+            rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
+          }
+        }
+      }
+
+      const combined = statusLine
+        ? (strippedText ? `${strippedText}\n\n${statusLine}` : statusLine)
+        : strippedText;
+      if (combined === '') {
+        await fail('empty reply after stripping reasoning');
+        return;
+      }
+
+      const text = truncateForDiscord(combined);
       const id = await safeSend(state, text);
       if (id === null) {
         rec?.reasons.push('reply failed: discord would not take the message');

@@ -37,7 +37,22 @@ test('toEntry maps the view to an entry', () => {
     messageId: 'm1', channelId: 'chan', authorId: 'human', name: 'sam',
     isBot: false, isLu: false, mentionsLu: false, mentionsOthers: false,
     repliesToLu: false, repliesToOther: true, at: 1000, text: 'hello',
+    authorCanManageNicknames: false, inGuild: false,
   });
+});
+
+// --- Task 15: nickname change permission and guild fields ------------------
+
+test('toEntry carries authorCanManageNicknames and inGuild from the view', () => {
+  const entry = toEntry(view({ authorCanManageNicknames: true, inGuild: true }), { botId: 'bot' });
+  assert.equal(entry.authorCanManageNicknames, true);
+  assert.equal(entry.inGuild, true);
+});
+
+test('toEntry defaults authorCanManageNicknames and inGuild to false when absent from the view', () => {
+  const entry = toEntry(view(), { botId: 'bot' });
+  assert.equal(entry.authorCanManageNicknames, false);
+  assert.equal(entry.inGuild, false);
 });
 
 // Open bug in .agents/STATUS.md: stripping the mention tag left a bare "@Lu"
@@ -74,6 +89,39 @@ test('Lu posts as a plain channel message that pings nobody, never as a reply', 
   const id = await createChannelIo(channel).send('wot');
   assert.equal(id, 'new1');
   assert.deepEqual(calls, [['send', { content: 'wot', allowedMentions: { parse: [] } }]]);
+});
+
+test('createChannelIo.applyNickname sets the nickname and reports ok', async () => {
+  const calls = [];
+  const channel = {
+    guild: { members: { me: { async setNickname(name) { calls.push(name); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname('Bob');
+  assert.deepEqual(out, { ok: true });
+  assert.deepEqual(calls, ['Bob']);
+});
+
+test('createChannelIo.applyNickname(null) clears the nickname', async () => {
+  const calls = [];
+  const channel = {
+    guild: { members: { me: { async setNickname(name) { calls.push(name); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname(null);
+  assert.deepEqual(out, { ok: true });
+  assert.deepEqual(calls, [null]);
+});
+
+test('createChannelIo.applyNickname reports refused when Discord rejects the change', async () => {
+  const channel = {
+    guild: { members: { me: { async setNickname() { throw new Error('Missing Permissions'); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname('Bob');
+  assert.deepEqual(out, { ok: false, reason: 'refused' });
+});
+
+test('createChannelIo.applyNickname reports notInGuild when the channel has no guild', async () => {
+  const out = await createChannelIo({}).applyNickname('Bob');
+  assert.deepEqual(out, { ok: false, reason: 'notInGuild' });
 });
 
 // --- Whole-branch review, finding F: Discord's 2000-character reply limit ---

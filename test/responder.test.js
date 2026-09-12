@@ -287,6 +287,41 @@ test('respondWithReason passes the abort signal to the model call', async () => 
 
 // --- Task 14: shorter replies -------------------------------------------------
 
+// --- Task 15: extraInstruction injection ---------------------------------
+
+test('buildMessages appends extraInstruction to the system message after the corpus block', () => {
+  const messages = buildMessages({ persona, chunks: [], history: [], message: 'hi', extraInstruction: 'DO THE THING' });
+  assert.ok(messages[0].content.endsWith('\n\n---\n\nDO THE THING'));
+});
+
+test('buildMessages leaves the system message unchanged when extraInstruction is not given', () => {
+  const withArg = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
+  const withoutArg = buildMessages({ persona, chunks: [], history: [], message: 'hi', extraInstruction: undefined });
+  assert.equal(withArg[0].content, withoutArg[0].content);
+  assert.ok(!withArg[0].content.includes('undefined'));
+});
+
+test('respondWithReason forwards extraInstruction into the built messages', async () => {
+  let seenMessages;
+  const llm = {
+    async chatWithFinish(args) { seenMessages = args.messages; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
+  await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona, llm, config, extraInstruction: 'DO THE THING',
+  });
+  assert.ok(seenMessages[0].content.includes('DO THE THING'));
+});
+
+test('respondWithReason without extraInstruction produces a byte-identical system message to before this task', async () => {
+  let seenMessages;
+  const llm = {
+    async chatWithFinish(args) { seenMessages = args.messages; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config });
+  const expected = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
+  assert.equal(seenMessages[0].content, expected[0].content);
+});
+
 test('respondWithReason passes config.reply.maxTokens to the model call', async () => {
   let seenMaxTokens;
   const llm = {

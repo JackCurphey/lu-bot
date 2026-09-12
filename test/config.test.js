@@ -158,6 +158,23 @@ test('a trim size that is not below the history limit is rejected', () => {
   );
 });
 
+// --- Task 15: nickname config --------------------------------------------
+
+test('nickname defaults: enabled and requirePermission both true', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.nickname, { enabled: true, requirePermission: true });
+});
+
+test('NICKNAME_ENABLED=false disables the feature', () => {
+  const cfg = loadConfig({ ...valid, NICKNAME_ENABLED: 'false' });
+  assert.equal(cfg.nickname.enabled, false);
+});
+
+test('NICKNAME_REQUIRE_PERMISSION=false lets anyone ask', () => {
+  const cfg = loadConfig({ ...valid, NICKNAME_REQUIRE_PERMISSION: 'false' });
+  assert.equal(cfg.nickname.requirePermission, false);
+});
+
 test('a random reply chance outside 0..1 is rejected', () => {
   assert.throws(
     () => loadConfig({ ...valid, RANDOM_REPLY_CHANCE: '2' }),
