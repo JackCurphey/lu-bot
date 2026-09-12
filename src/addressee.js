@@ -10,22 +10,34 @@ export const ADDRESSEE_SYSTEM =
   'comment aimed at him), not just near him? If it addresses another named ' +
   'person, the group, or nobody, answer NO. Otherwise YES. One word.';
 
-// Each line's text is bounded, not just the prompt as a whole: reading an
-// uncached prompt runs ~25 tok/s on the deployment host's CPU, and Lu's own
-// replies run 120-200 words, so a real 6-entry history window fed verbatim
-// reached 700+ tokens and always missed the judge timeout (live check,
-// 2026-09-11). The "name: " prefix doesn't count against the budget.
+// Each context line's text is bounded, not just the prompt as a whole:
+// reading an uncached prompt runs ~25 tok/s on the deployment host's CPU, and
+// Lu's own replies run 120-200 words, so a real 6-entry history window fed
+// verbatim reached 700+ tokens and always missed the judge timeout (live
+// check, 2026-09-11). The "name: " prefix doesn't count against the budget.
 export const ADDRESSEE_LINE_CHARS = 120;
 
+// Codepoint-safe: a plain text.slice(0, N) counts UTF-16 code units, so it
+// can cut a non-BMP character (e.g. an emoji) in half and hand the judge a
+// broken surrogate. Slicing the spread array slices whole codepoints.
 function truncateLine(text) {
-  return text.length > ADDRESSEE_LINE_CHARS
-    ? `${text.slice(0, ADDRESSEE_LINE_CHARS)}…`
+  const codepoints = [...text];
+  return codepoints.length > ADDRESSEE_LINE_CHARS
+    ? `${codepoints.slice(0, ADDRESSEE_LINE_CHARS).join('')}…`
     : text;
 }
 
 export function buildAddresseeMessages({ entries }) {
+  // ADDRESSEE_SYSTEM tells the judge to rule on ONLY the last entry, and
+  // addressing cues ("...right, Lu?") often sit at the very end of a
+  // sentence. Truncating that entry could strip the cue the judge needs and
+  // turn a real YES into a false NO, so the last entry is exempt: only the
+  // context entries (everything before it) are bounded. The prompt-size
+  // guarantee still holds in practice -- up to 5 bounded context lines plus
+  // one full final message.
+  const lastIndex = entries.length - 1;
   const lines = entries
-    .map((e) => `${e.isLu ? 'Lu' : e.name}: ${truncateLine(e.text)}`)
+    .map((e, i) => `${e.isLu ? 'Lu' : e.name}: ${i === lastIndex ? e.text : truncateLine(e.text)}`)
     .join('\n');
   return [
     { role: 'system', content: ADDRESSEE_SYSTEM },

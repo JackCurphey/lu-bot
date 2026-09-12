@@ -61,12 +61,16 @@ test('a long entry is truncated to ADDRESSEE_LINE_CHARS plus an ellipsis, a shor
   assert.equal(shortLine, `sam: ${shortText}`);
 });
 
-test('truncation applies to Lu\'s own lines too', () => {
+test('truncation applies to Lu\'s own lines too, when they are context and not the last entry', () => {
   const longText = 'y'.repeat(400);
   const [, user] = buildAddresseeMessages({
-    entries: [{ name: 'Lu', isLu: true, text: longText }],
+    entries: [
+      { name: 'Lu', isLu: true, text: longText },
+      { name: 'sam', isLu: false, text: 'short last entry' },
+    ],
   });
-  assert.equal(user.content, `Lu: ${'y'.repeat(ADDRESSEE_LINE_CHARS)}…`);
+  const [luLine] = user.content.split('\n');
+  assert.equal(luLine, `Lu: ${'y'.repeat(ADDRESSEE_LINE_CHARS)}…`);
 });
 
 test('name prefixes and line order survive truncation', () => {
@@ -83,6 +87,10 @@ test('name prefixes and line order survive truncation', () => {
 });
 
 test('a whole 6-entry window of long messages stays well under the old 700-token prompt', () => {
+  // The last entry is the message under judgment and is never truncated (see
+  // below), so this fixture caps only the 5 context entries' length and lets
+  // the last one run long too -- the bound still has to hold with one full
+  // line in the mix, which is the real shape of every judge call.
   const longReply = 'This is a much longer reply that runs well over a hundred words. '.repeat(3);
   const sixEntries = Array.from({ length: 6 }, (_, i) => ({
     name: i % 2 === 0 ? 'Lu' : 'sam',
@@ -90,7 +98,58 @@ test('a whole 6-entry window of long messages stays well under the old 700-token
     text: longReply,
   }));
   const [, user] = buildAddresseeMessages({ entries: sixEntries });
-  assert.ok(user.content.length < 800, `user content is ${user.content.length} chars`);
+  // 5 context lines truncated to 120 chars + 1 full last line (~200 chars).
+  assert.ok(user.content.length < 950, `user content is ${user.content.length} chars`);
+});
+
+// --- The last entry is the message under judgment: never truncate it ----------
+//
+// ADDRESSEE_SYSTEM tells the judge to rule on ONLY the last message.
+// Addressing cues ("...right, Lu?") often sit at the very end of a sentence,
+// so truncating that entry at 120 chars can strip the cue that would have
+// produced YES, turning it into a false NO that did not exist before
+// truncation was added. Context entries (everything but the last) still get
+// truncated for prompt-size reasons.
+
+test('the last entry is passed through in full even when long; earlier long entries are still truncated', () => {
+  const longContext = 'c'.repeat(400);
+  const longLast = `${'x'.repeat(200)} right, Lu?`;
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'sam', isLu: false, text: longContext },
+      { name: 'sam', isLu: false, text: longLast },
+    ],
+  });
+  const [contextLine, lastLine] = user.content.split('\n');
+  assert.equal(contextLine, `sam: ${'c'.repeat(ADDRESSEE_LINE_CHARS)}…`);
+  assert.equal(lastLine, `sam: ${longLast}`);
+  assert.ok(!lastLine.includes('…'), 'the judged message must not be truncated');
+  assert.match(lastLine, /right, Lu\?$/);
+});
+
+// --- Truncation must be codepoint-safe, not UTF-16-unit-safe -------------------
+//
+// text.slice(0, N) counts UTF-16 code units, so it can cut a non-BMP
+// character (e.g. an emoji) in half, producing a broken/unpaired surrogate in
+// the prompt. Truncation must operate on codepoints.
+
+test('truncation does not split an emoji straddling the 120-codepoint boundary', () => {
+  // 119 'a' codepoints + one 2-code-unit emoji spanning codepoints 119/120,
+  // followed by more filler so this is a context (non-last) entry.
+  const emoji = '😀';
+  const text = `${'a'.repeat(119)}${emoji}${'b'.repeat(50)}`;
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'sam', isLu: false, text },
+      { name: 'sam', isLu: false, text: 'short last entry' },
+    ],
+  });
+  const [contextLine] = user.content.split('\n');
+  assert.match(contextLine, /…$/);
+  const truncated = contextLine.slice('sam: '.length, -1); // strip prefix and trailing …
+  assert.equal([...truncated].length, ADDRESSEE_LINE_CHARS);
+  const codepoints = [...truncated];
+  assert.equal(codepoints[codepoints.length - 1], emoji, 'must not cut the emoji in half');
 });
 
 // --- Parsing: anything unclear is NO -------------------------------------------
