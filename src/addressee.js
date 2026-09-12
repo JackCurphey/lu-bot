@@ -10,8 +10,23 @@ export const ADDRESSEE_SYSTEM =
   'comment aimed at him), not just near him? If it addresses another named ' +
   'person, the group, or nobody, answer NO. Otherwise YES. One word.';
 
+// Each line's text is bounded, not just the prompt as a whole: reading an
+// uncached prompt runs ~25 tok/s on the deployment host's CPU, and Lu's own
+// replies run 120-200 words, so a real 6-entry history window fed verbatim
+// reached 700+ tokens and always missed the judge timeout (live check,
+// 2026-09-11). The "name: " prefix doesn't count against the budget.
+export const ADDRESSEE_LINE_CHARS = 120;
+
+function truncateLine(text) {
+  return text.length > ADDRESSEE_LINE_CHARS
+    ? `${text.slice(0, ADDRESSEE_LINE_CHARS)}…`
+    : text;
+}
+
 export function buildAddresseeMessages({ entries }) {
-  const lines = entries.map((e) => `${e.isLu ? 'Lu' : e.name}: ${e.text}`).join('\n');
+  const lines = entries
+    .map((e) => `${e.isLu ? 'Lu' : e.name}: ${truncateLine(e.text)}`)
+    .join('\n');
   return [
     { role: 'system', content: ADDRESSEE_SYSTEM },
     { role: 'user', content: lines },

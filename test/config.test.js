@@ -120,8 +120,16 @@ test('stage 1 defaults', () => {
   assert.equal(cfg.trigger.windowMessages, 8);
   assert.equal(cfg.trigger.windowMinutes, 5);
   assert.equal(cfg.trigger.pauseSeconds, 3);
-  assert.equal(cfg.trigger.addresseeTimeoutSeconds, 15);
+  assert.equal(cfg.trigger.addresseeTimeoutSeconds, 30);
   assert.deepEqual(cfg.reply, { timeoutSeconds: 90 });
+});
+
+// A bounded judge prompt (see src/addressee.js) still runs ~250-300 tokens and
+// can queue behind a reply on a host that runs one model job at a time, so the
+// default carries headroom rather than a new floor. This is still overridable.
+test('ADDRESSEE_TIMEOUT_SECONDS overrides the default', () => {
+  const cfg = loadConfig({ ...valid, ADDRESSEE_TIMEOUT_SECONDS: '45' });
+  assert.equal(cfg.trigger.addresseeTimeoutSeconds, 45);
 });
 
 test('the addressee model defaults to the judge model', () => {

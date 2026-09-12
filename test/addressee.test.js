@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildAddresseeMessages, parseAddresseeAnswer, isAddressedToLu, hasModel, ADDRESSEE_SYSTEM,
+  ADDRESSEE_LINE_CHARS,
 } from '../src/addressee.js';
 
 const config = { llm: { addresseeModel: 'small' }, trigger: { addresseeTimeoutSeconds: 15 } };
@@ -37,6 +38,59 @@ test('the conversation is one "name: text" line per message, Lu named as Lu', ()
   assert.equal(system.role, 'system');
   assert.equal(user.role, 'user');
   assert.equal(user.content, 'Lu: the state is a tool\nsam: a tool for what exactly');
+});
+
+// --- Prompt size: a real-conversation window must stay judge-fast --------------
+//
+// Lu's own replies run 120-200 words; fed verbatim into the judge prompt they
+// pushed a real 6-entry window past 700 tokens, which at ~25 tok/s on the
+// deployment host's CPU always missed the 15s timeout. Each line is bounded.
+
+test('a long entry is truncated to ADDRESSEE_LINE_CHARS plus an ellipsis, a short one is untouched', () => {
+  const longText = 'x'.repeat(400);
+  const shortText = 'a tool for what exactly';
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'sam', isLu: false, text: longText },
+      { name: 'sam', isLu: false, text: shortText },
+    ],
+  });
+  const [longLine, shortLine] = user.content.split('\n');
+  assert.equal(longLine, `sam: ${'x'.repeat(ADDRESSEE_LINE_CHARS)}…`);
+  assert.equal(longLine.length, 'sam: '.length + ADDRESSEE_LINE_CHARS + 1);
+  assert.equal(shortLine, `sam: ${shortText}`);
+});
+
+test('truncation applies to Lu\'s own lines too', () => {
+  const longText = 'y'.repeat(400);
+  const [, user] = buildAddresseeMessages({
+    entries: [{ name: 'Lu', isLu: true, text: longText }],
+  });
+  assert.equal(user.content, `Lu: ${'y'.repeat(ADDRESSEE_LINE_CHARS)}…`);
+});
+
+test('name prefixes and line order survive truncation', () => {
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'Lu', isLu: true, text: 'z'.repeat(400) },
+      { name: 'sam', isLu: false, text: 'w'.repeat(400) },
+    ],
+  });
+  const lines = user.content.split('\n');
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /^Lu: /);
+  assert.match(lines[1], /^sam: /);
+});
+
+test('a whole 6-entry window of long messages stays well under the old 700-token prompt', () => {
+  const longReply = 'This is a much longer reply that runs well over a hundred words. '.repeat(3);
+  const sixEntries = Array.from({ length: 6 }, (_, i) => ({
+    name: i % 2 === 0 ? 'Lu' : 'sam',
+    isLu: i % 2 === 0,
+    text: longReply,
+  }));
+  const [, user] = buildAddresseeMessages({ entries: sixEntries });
+  assert.ok(user.content.length < 800, `user content is ${user.content.length} chars`);
 });
 
 // --- Parsing: anything unclear is NO -------------------------------------------

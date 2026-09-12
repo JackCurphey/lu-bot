@@ -85,7 +85,13 @@ export function loadConfig(env) {
       windowMessages: num(env, 'ATTENTION_WINDOW_MESSAGES', 8),
       windowMinutes: num(env, 'ATTENTION_WINDOW_MINUTES', 5),
       pauseSeconds: num(env, 'PAUSE_SECONDS', 3),
-      addresseeTimeoutSeconds: num(env, 'ADDRESSEE_TIMEOUT_SECONDS', 15),
+      // Live check (2026-09-11): an unbounded judge prompt on a real
+      // conversation took ~28s to read at ~25 tok/s on the deployment host,
+      // always missing 15s. The prompt is now bounded per line (see
+      // ADDRESSEE_LINE_CHARS in src/addressee.js) to ~250-300 tokens, ~12s
+      // cold; 30s adds headroom for queueing behind a reply on a host that
+      // runs one model job at a time, not a new normal.
+      addresseeTimeoutSeconds: num(env, 'ADDRESSEE_TIMEOUT_SECONDS', 30),
     },
     reply: {
       timeoutSeconds: num(env, 'REPLY_TIMEOUT_SECONDS', 90),
