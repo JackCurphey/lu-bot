@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildAddresseeMessages, parseAddresseeAnswer, isAddressedToLu, hasModel, ADDRESSEE_SYSTEM,
-  ADDRESSEE_LINE_CHARS,
+  ADDRESSEE_LINE_CHARS, ADDRESSEE_LAST_LINE_CHARS,
 } from '../src/addressee.js';
 
 const config = { llm: { addresseeModel: 'small' }, trigger: { addresseeTimeoutSeconds: 15 } };
@@ -87,44 +87,79 @@ test('name prefixes and line order survive truncation', () => {
 });
 
 test('a whole 6-entry window of long messages stays well under the old 700-token prompt', () => {
-  // The last entry is the message under judgment and is never truncated (see
-  // below), so this fixture caps only the 5 context entries' length and lets
-  // the last one run long too -- the bound still has to hold with one full
-  // line in the mix, which is the real shape of every judge call.
+  // The last entry is the message under judgment; round 3 caps it to its
+  // last 600 codepoints (plus a leading …) instead of exempting it entirely,
+  // so this fixture pins the worst case with a maximal (2000-char, Discord's
+  // limit) last entry alongside 5 truncated context lines.
+  //
+  // Arithmetic (entries alternate Lu/sam, last of 6 is index 5 -> 'sam'):
+  //   context prefixes: 'Lu: '(4) + 'sam: '(5) + 'Lu: '(4) + 'sam: '(5) + 'Lu: '(4) = 22
+  //   context bodies:    5 * (120 + 1 for '…')                          = 605
+  //   last line:         'sam: '(5) + 1 for leading '…' + 600           = 606
+  //   newlines joining 6 lines:                                         = 5
+  //   total:             22 + 605 + 606 + 5                             = 1238
   const longReply = 'This is a much longer reply that runs well over a hundred words. '.repeat(3);
   const sixEntries = Array.from({ length: 6 }, (_, i) => ({
     name: i % 2 === 0 ? 'Lu' : 'sam',
     isLu: i % 2 === 0,
-    text: longReply,
+    text: i === 5 ? 'x'.repeat(2000) : longReply,
   }));
   const [, user] = buildAddresseeMessages({ entries: sixEntries });
-  // 5 context lines truncated to 120 chars + 1 full last line (~200 chars).
-  assert.ok(user.content.length < 950, `user content is ${user.content.length} chars`);
+  assert.ok(user.content.length < 1300, `user content is ${user.content.length} chars`);
 });
 
-// --- The last entry is the message under judgment: never truncate it ----------
+// --- The last entry is the message under judgment: bound it, but keep the tail
 //
 // ADDRESSEE_SYSTEM tells the judge to rule on ONLY the last message.
 // Addressing cues ("...right, Lu?") often sit at the very end of a sentence,
-// so truncating that entry at 120 chars can strip the cue that would have
-// produced YES, turning it into a false NO that did not exist before
-// truncation was added. Context entries (everything but the last) still get
-// truncated for prompt-size reasons.
+// so the last entry keeps its LAST ADDRESSEE_LAST_LINE_CHARS codepoints
+// (prefixed with a leading …) rather than being head-truncated like context
+// lines. Left unbounded, Discord's 2000-char message limit alone is ~20s of
+// uncached reading against the 30s judge timeout -- the same class of
+// failure fix round 1 addressed for context lines. Context entries
+// (everything but the last) still get head-truncated for prompt-size
+// reasons, since they're read for gist, not for a trailing cue.
 
-test('the last entry is passed through in full even when long; earlier long entries are still truncated', () => {
+test('a 2000-char last entry is capped to its last 600 codepoints, with a leading … and the addressing cue intact', () => {
+  const longLast = `${'x'.repeat(2000 - 'right, Lu?'.length)}right, Lu?`;
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'sam', isLu: false, text: 'short context' },
+      { name: 'sam', isLu: false, text: longLast },
+    ],
+  });
+  const [, lastLine] = user.content.split('\n');
+  const body = lastLine.slice('sam: '.length);
+  assert.equal(body[0], '…');
+  assert.equal([...body].length, ADDRESSEE_LAST_LINE_CHARS + 1);
+  assert.equal(body, `…${[...longLast].slice(-ADDRESSEE_LAST_LINE_CHARS).join('')}`);
+  assert.match(body, /right, Lu\?$/);
+});
+
+test('a 599-char last entry is passed through untouched, no leading …', () => {
+  const longLast = 'x'.repeat(599);
+  const [, user] = buildAddresseeMessages({
+    entries: [
+      { name: 'sam', isLu: false, text: 'short context' },
+      { name: 'sam', isLu: false, text: longLast },
+    ],
+  });
+  const [, lastLine] = user.content.split('\n');
+  assert.equal(lastLine, `sam: ${longLast}`);
+  assert.ok(!lastLine.includes('…'));
+});
+
+test('context entries are still head-truncated at ADDRESSEE_LINE_CHARS when the last entry is also long', () => {
   const longContext = 'c'.repeat(400);
-  const longLast = `${'x'.repeat(200)} right, Lu?`;
+  const longLast = `${'x'.repeat(2000 - 'right, Lu?'.length)}right, Lu?`;
   const [, user] = buildAddresseeMessages({
     entries: [
       { name: 'sam', isLu: false, text: longContext },
       { name: 'sam', isLu: false, text: longLast },
     ],
   });
-  const [contextLine, lastLine] = user.content.split('\n');
+  const [contextLine] = user.content.split('\n');
   assert.equal(contextLine, `sam: ${'c'.repeat(ADDRESSEE_LINE_CHARS)}…`);
-  assert.equal(lastLine, `sam: ${longLast}`);
-  assert.ok(!lastLine.includes('…'), 'the judged message must not be truncated');
-  assert.match(lastLine, /right, Lu\?$/);
 });
 
 // --- Truncation must be codepoint-safe, not UTF-16-unit-safe -------------------
