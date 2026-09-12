@@ -12,6 +12,20 @@ import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNi
 // falls through to no status line, same as any other unmapped reason.
 const VALIDATION_LINES = { 'too-long': 'tooLong', mentions: 'mentions' };
 
+// Shared by both the deterministic reset path and the marker-driven rename
+// path in reply() below — guard order (guild first, then permission) and the
+// status lines/reasons must stay byte-identical between the two. Returns
+// null when neither guard fires, meaning the caller may proceed.
+function nicknameRefusal(entry, config) {
+  if (!entry.inGuild) {
+    return { statusLine: NICKNAME_LINES.notInGuild, reason: 'nickname change refused: not in a server' };
+  }
+  if (config.nickname.requirePermission && !entry.authorCanManageNicknames) {
+    return { statusLine: NICKNAME_LINES.noPermission, reason: 'nickname change refused: asker lacks Manage Nicknames' };
+  }
+  return null;
+}
+
 // In character, and fixed, so the group reads it as "something broke" while
 // anyone else just sees Lu having a bad moment. The real cause is in the
 // decision log, for "lu explain".
@@ -182,12 +196,10 @@ export function createConversation({
         // line came back" diagnostic to raise — that reason is reserved for
         // a genuine rename the model failed to act on. Run the same guards,
         // in the same order, as the marker-driven path below.
-        if (!entry.inGuild) {
-          statusLine = NICKNAME_LINES.notInGuild;
-          rec?.reasons.push('nickname change refused: not in a server');
-        } else if (config.nickname.requirePermission && !entry.authorCanManageNicknames) {
-          statusLine = NICKNAME_LINES.noPermission;
-          rec?.reasons.push('nickname change refused: asker lacks Manage Nicknames');
+        const refusal = nicknameRefusal(entry, config);
+        if (refusal) {
+          statusLine = refusal.statusLine;
+          rec?.reasons.push(refusal.reason);
         } else {
           const outcome = await state.io.applyNickname(null);
           if (outcome.ok) {
@@ -209,34 +221,34 @@ export function createConversation({
         if (asksRename) rec?.reasons.push('asked for a rename but no NICKNAME line came back');
       } else if (!asksRename) {
         rec?.reasons.push('ignored a NICKNAME line nobody asked for');
-      } else if (!entry.inGuild) {
-        statusLine = NICKNAME_LINES.notInGuild;
-        rec?.reasons.push('nickname change refused: not in a server');
-      } else if (config.nickname.requirePermission && !entry.authorCanManageNicknames) {
-        statusLine = NICKNAME_LINES.noPermission;
-        rec?.reasons.push('nickname change refused: asker lacks Manage Nicknames');
-      } else if (request.reset) {
-        const outcome = await state.io.applyNickname(null);
-        if (outcome.ok) {
-          renameSucceeded = true;
-          rec?.reasons.push('reset nickname to the default');
-        } else {
-          statusLine = NICKNAME_LINES[outcome.reason] ?? null;
-          rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
-        }
       } else {
-        const validation = validateNickname(request.name);
-        if (!validation.ok) {
-          statusLine = NICKNAME_LINES[VALIDATION_LINES[validation.reason]] ?? null;
-          rec?.reasons.push(`nickname change refused: ${validation.reason}`);
-        } else {
-          const outcome = await state.io.applyNickname(validation.name);
+        const refusal = nicknameRefusal(entry, config);
+        if (refusal) {
+          statusLine = refusal.statusLine;
+          rec?.reasons.push(refusal.reason);
+        } else if (request.reset) {
+          const outcome = await state.io.applyNickname(null);
           if (outcome.ok) {
             renameSucceeded = true;
-            rec?.reasons.push(`changed nickname to "${validation.name}"`);
+            rec?.reasons.push('reset nickname to the default');
           } else {
             statusLine = NICKNAME_LINES[outcome.reason] ?? null;
             rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
+          }
+        } else {
+          const validation = validateNickname(request.name);
+          if (!validation.ok) {
+            statusLine = NICKNAME_LINES[VALIDATION_LINES[validation.reason]] ?? null;
+            rec?.reasons.push(`nickname change refused: ${validation.reason}`);
+          } else {
+            const outcome = await state.io.applyNickname(validation.name);
+            if (outcome.ok) {
+              renameSucceeded = true;
+              rec?.reasons.push(`changed nickname to "${validation.name}"`);
+            } else {
+              statusLine = NICKNAME_LINES[outcome.reason] ?? null;
+              rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
+            }
           }
         }
       }

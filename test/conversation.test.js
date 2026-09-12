@@ -308,6 +308,22 @@ test('NICKNAME: RESET calls applyNickname(null)', async () => {
   assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('ignored a NICKNAME line: the reset was handled directly'));
 });
 
+// --- Fix round 1, Important 1: the model-driven RESET marker still has a
+// live branch when a message matches NICKNAME_REQUEST_RE but not
+// NICKNAME_RESET_RE — "call yourself your normal name" is one such phrase
+// (verified directly against both exported regexes: it matches
+// NICKNAME_REQUEST_RE and not NICKNAME_RESET_RE), so the model's own
+// "NICKNAME: RESET" marker is what has to carry the reset here, not the
+// deterministic asksReset path.
+test('a NICKNAME: RESET marker on a non-deterministic reset phrase resets via the marker path', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'ok\nNICKNAME: RESET' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu call yourself your normal name' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, [null]);
+  assert.deepEqual(s.sent, ['ok']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('reset nickname to the default'));
+});
+
 // --- Task 16, Part 1: deterministic nickname reset --------------------------
 
 test('a reset request resets the nickname with no marker at all, and the decision records it', async () => {
@@ -395,6 +411,19 @@ test('a reply that is only a marker and fails posts the status line alone, never
 test('not in a guild refuses the rename before checking permission', async () => {
   const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }) });
   const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob', inGuild: false });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.notInGuild}`]);
+});
+
+// --- Fix round 1, Important 2: guard order in the extracted nicknameRefusal
+// helper — a DM-style entry with no Manage Nicknames permission either
+// distinguishes which guard runs first (guild always wins).
+test('not in a guild and lacking permission still gets the notInGuild line, not noPermission', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }) });
+  const m = msg({
+    mentionsLu: true, text: '@Lu change your name to Bob', inGuild: false, authorCanManageNicknames: false,
+  });
   await say(s, m);
   assert.deepEqual(s.calls.applyNickname, []);
   assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.notInGuild}`]);
