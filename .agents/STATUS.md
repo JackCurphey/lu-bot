@@ -1,12 +1,50 @@
 # Lu Bot — status
 
-> **2026-09-11, new work: porting the original Lu's features into this bot.**
-> The repo now lives at `~/Claude/Lu/lu-bot` (moved from `~/Documents/lu-bot`).
-> The original Lu (Python, PC) is `JackCurphey/LU2`, checked out at
-> `~/Claude/Lu/LU2` on branch `initial-import`. Four stages; stage 1 spec:
-> `docs/superpowers/specs/2026-09-11-old-lu-stage1-design.md`, branch
-> `feat/old-lu-stage1`. Spec approved; plan: `docs/superpowers/plans/2026-09-11-old-lu-stage1.md` (13 tasks). No code yet.
-> The mini-deployment status below is unchanged and still open.
+> **2026-09-12: stage 1 of the old-Lu port is built, reviewed and running on
+> the mini.**
+> Repo: `~/Claude/Lu/lu-bot`. The original Lu (Python, PC) is
+> `JackCurphey/LU2`, checked out at `~/Claude/Lu/LU2` on branch
+> `initial-import` — it is the feature reference for stages 2-4 (nicknames,
+> memes, avatars, `!lu` help; long-term per-user memory and social credit;
+> `!learn`/`!corpus_status`/file ingest).
+>
+> Stage 1 (persona, when he speaks, what he hears) is at commit `0b2adb1` on
+> branch `feat/old-lu-stage1` — **not merged, not pushed.** It is deployed and
+> running on the mini (one instance, deployed via rsync + `npm ci` +
+> `launchctl kickstart`). The live check in `#lu-bot-chat` (Cry's Cantina)
+> passed every item on the done-condition checklist, tested from the user's
+> own Discord account. Full walk against the spec, section by section:
+> `docs/superpowers/specs/2026-09-11-old-lu-stage1-verification.md`.
+>
+> **What stage 1 added:**
+> - Old Lu's persona, word for word, plus the current corpus/quoting rules.
+> - Lu now hears every message in an allowed channel (`src/history.js`) and
+>   follows a conversation, not just direct mentions (`src/attention.js`,
+>   `src/pause.js`, `src/addressee.js` — a lean "is this for Lu?" judge).
+> - `lu explain` — a per-channel decision log (`src/decisions.js`).
+> - Plain messages (`channel.send`, not replies); the bare-`@Lu` bug fixed;
+>   a headache signal (`uh oh... i have a headache`) on a failed reply to
+>   something aimed at him.
+>
+> **Open items for the user** (full detail in the verification doc above):
+> 1. The judge's false-YES rate (6/20 on non-Lu examples) has no cooldown —
+>    every reply refreshes the 5-minute attention window, so Lu can hold the
+>    floor in a busy channel. Deliberately left as-is (spec's approved
+>    design); a tuning question, not a defect.
+> 2. With no corpus loaded, Lu invents quotations attributed to Mao in most
+>    live replies — spec-sanctioned (the fabrication check is skipped with no
+>    passages to match against), not a stage-1 regression.
+> 3. "Minimal punctuation" vs the quoting rules: watched, not fixed, per the
+>    spec. Live check showed no dropped quotes (he used `「」`).
+> 4. Ollama's context window on the mini is 4096 tokens. Stage 1 fits
+>    (~600-1300 tokens); future corpus chunks may not.
+>
+> **Stages 2-4** (not started): nicknames/memes/avatars/`!lu` help;
+> opt-in per-user memory and social credit; `!learn`/`!corpus_status`/file
+> save-getfile and PDF/Word ingest. Each gets its own spec and plan, mining
+> `~/Claude/Lu/LU2` for the reference behaviour.
+>
+> The mini-deployment status below is unchanged except where corrected inline.
 
 **Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
 merged. **Pushed to private GitHub repo https://github.com/JackCurphey/lu-bot**
@@ -33,6 +71,13 @@ embeddings. Benchmarked on the mini: ~13-15s per reply.
 | 5. Lu as launchd service | steps 1-3 done (service was `running`); **live check FAILED — no reply** |
 | 6. Fault injection | not started |
 | 7. Host config + handover | FileVault checked (**On**); rest not started |
+
+**Note (2026-09-12):** the bot running on the mini is no longer at this
+branch's commit. Stage 1 (`feat/old-lu-stage1`) was deployed on top of it for
+its live check, and the mini currently runs stage 1's `0b2adb1`, not
+`feat/mini-deployment`'s `d8ec09d`. Task 5's remaining steps, and Tasks 6-7,
+still apply to the deployment mechanics but should be resumed against
+whichever commit is live on the mini at the time.
 
 ## Why the live check failed — hypothesis, not proven
 
@@ -87,17 +132,26 @@ Discord developer portal is the only step that makes those copies useless.
 - The MacBook's old LM Studio setup (hand-edited Jinja template etc.) is no longer
   the live path.
 
-## The bug to fix first (still open)
+## Fixed since this section was written
 
-**A mention with no other text fails.** `src/discord.js` strips the mention tag
-and can produce an empty string; the model server returns HTTP 400 because the
-message is empty. Test-first: a mention-only message must never reach the model
-as empty content.
+- **Bare `@mention` fails.** Was: `src/discord.js` stripped the mention tag,
+  producing an empty string that the model server rejected with HTTP 400.
+  Fixed in stage 1 (`feat/old-lu-stage1`, commit `1530b05`): the mention tag
+  is rendered as `@displayname`/`@Lu` instead of deleted, so a bare mention
+  never reaches the model as empty text. Live-checked on the mini:
+  "PASS bare @mention → reply (old bug fixed, no empty-content 400)".
+- **A model-side failure was silent in-channel.** Was: model error,
+  unverifiable quotation and over-length reply all looked identical from
+  Discord. Addressed in stage 1 by the headache signal (`uh oh... i have a
+  headache`, posted only for a failed reply to something aimed at Lu) plus
+  `lu explain`, which shows the real cause ("model server error: fetch
+  failed", "reply dropped: quote not found in passages", etc.) per channel.
+  Still open: unverifiable-quotation and over-length-reply failures are not
+  yet distinguished from each other in the headache signal itself — only in
+  the `lu explain` record.
 
 ## Also open
 
-- A model-side failure is silent in-channel: model error, unverifiable quotation
-  and over-length reply all look identical from Discord.
 - **Before ingesting real texts:** ingest hardcodes author to `unknown` and
   chapter to `null` (`scripts/ingest.js`); the chunker has no sentence fallback.
 - **Proactive chiming** is not built. The mini can afford it (embeddings are 25ms);

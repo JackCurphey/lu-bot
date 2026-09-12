@@ -21,7 +21,7 @@
 - Headache string, exactly: `uh oh... i have a headache`
 - `lu explain` pattern, exactly: `/^\s*lu[\s,:]+explain\b\s*(\d+)?\s*[!.?]*\s*$/i`
 - `lu explain` not-found text, exactly: `i dont have a record of that one, either nothing happened here since i restarted or it aged out`
-- Defaults, exactly: `HISTORY_LIMIT=20`, `HISTORY_TRIM_TO=10`, `TRIGGER_KEYWORDS=lu,ai bot`, `ATTENTION_WINDOW_MESSAGES=8`, `ATTENTION_WINDOW_MINUTES=5`, `PAUSE_SECONDS=3`, `RANDOM_REPLY_CHANCE=0.02`, `TRIGGER_COOLDOWN_SECONDS=60`, `LLM_ADDRESSEE_MODEL` defaults to `LLM_JUDGE_MODEL`, `ADDRESSEE_TIMEOUT_SECONDS=15`, `REPLY_TIMEOUT_SECONDS=90`.
+- Defaults, exactly: `HISTORY_LIMIT=20`, `HISTORY_TRIM_TO=10`, `TRIGGER_KEYWORDS=lu,ai bot`, `ATTENTION_WINDOW_MESSAGES=8`, `ATTENTION_WINDOW_MINUTES=5`, `PAUSE_SECONDS=3`, `RANDOM_REPLY_CHANCE=0.02`, `TRIGGER_COOLDOWN_SECONDS=60`, `LLM_ADDRESSEE_MODEL` defaults to `LLM_JUDGE_MODEL`, `ADDRESSEE_TIMEOUT_SECONDS=30`, `REPLY_TIMEOUT_SECONDS=90`.
 - Posting uses `channel.send`, never `message.reply`, with `allowedMentions: { parse: [] }`.
 - Code style: 2-space indent, single quotes, semicolons, trailing commas, named exports; comments explain *why*.
 
@@ -197,7 +197,7 @@ Replace the body of `loadConfig` from `const channels = ...` to the end of the f
       windowMessages: num(env, 'ATTENTION_WINDOW_MESSAGES', 8),
       windowMinutes: num(env, 'ATTENTION_WINDOW_MINUTES', 5),
       pauseSeconds: num(env, 'PAUSE_SECONDS', 3),
-      addresseeTimeoutSeconds: num(env, 'ADDRESSEE_TIMEOUT_SECONDS', 15),
+      addresseeTimeoutSeconds: num(env, 'ADDRESSEE_TIMEOUT_SECONDS', 30),
     },
     reply: {
       timeoutSeconds: num(env, 'REPLY_TIMEOUT_SECONDS', 90),
@@ -224,7 +224,7 @@ RANDOM_REPLY_CHANCE=0.02
 ATTENTION_WINDOW_MESSAGES=8
 ATTENTION_WINDOW_MINUTES=5
 PAUSE_SECONDS=3
-ADDRESSEE_TIMEOUT_SECONDS=15
+ADDRESSEE_TIMEOUT_SECONDS=30
 REPLY_TIMEOUT_SECONDS=90
 
 # Conversation memory per channel. When full, keep only the newest HISTORY_TRIM_TO.

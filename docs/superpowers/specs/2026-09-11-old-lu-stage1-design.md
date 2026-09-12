@@ -162,7 +162,7 @@ decided by the measuring step (section 7).
 
 It fails toward silence, like the corpus judge: a model error, an answer that
 is not a clear YES/NO, or a call taking longer than `ADDRESSEE_TIMEOUT_SECONDS`
-(default **15**) all count as NO. If the configured model is not installed on
+(default **30**) all count as NO. If the configured model is not installed on
 the model server, a startup warning says so and every judge call is NO; rules
 2-4 keep working.
 
@@ -257,7 +257,7 @@ New settings and defaults: `HISTORY_LIMIT=20`, `HISTORY_TRIM_TO=10`,
 `TRIGGER_KEYWORDS=lu,ai bot`, `ATTENTION_WINDOW_MESSAGES=8`,
 `ATTENTION_WINDOW_MINUTES=5`, `PAUSE_SECONDS=3`, `RANDOM_REPLY_CHANCE=0.02`,
 `TRIGGER_COOLDOWN_SECONDS=60`, `LLM_ADDRESSEE_MODEL` (defaults to
-`LLM_JUDGE_MODEL`), `ADDRESSEE_TIMEOUT_SECONDS=15`, `REPLY_TIMEOUT_SECONDS=90`.
+`LLM_JUDGE_MODEL`), `ADDRESSEE_TIMEOUT_SECONDS=30`, `REPLY_TIMEOUT_SECONDS=90`.
 
 No new dependencies.
 
@@ -325,3 +325,7 @@ messages beyond the headache signal.
 | Judge prompt revision 3 (279 chars) | Draft prompt: 15/20 wrongly YES on messages not for Lu, 0/20 missed. Revision 3: 6/20 wrongly YES, 1/20 missed. Still one over the plan's 6-mistake threshold after the 3 allowed revisions; adopted as the best measured, flagged for tuning. A wrong YES means Lu joins in when not asked. |
 | Prompt reuse confirmed on the mini | A judge call between two replies did not evict the reply prompt's cached text (the next reply reused 683 of 700 prompt tokens). Uncached prompt reading measured at about 25 tokens/s (596 tokens in 23.4s), slower than the 46 tokens/s estimate; batch trimming of history therefore matters. |
 | Ollama model-list shape confirmed | `GET /v1/models` on the mini returns `{object:"list", data:[{id, object:"model", created, owned_by:"library"}]}`, matching the `listModels` test fixture. |
+| Queue priority: a direct job is never replaced by a judge or chime job (R7) | The brief's original enqueue let a pause-settled judge job replace a waiting direct job, so a judge NO could silently drop a pending @mention, contradicting "anything aimed at him is always answered." Pending slot made priority-ordered instead. |
+| Pause-cancel narrowed to rules 2-4 only (R9) | The brief's cancel condition was broader than the spec's text and cancelled a pending judge on a bot message or a reply/mention aimed at someone else, stranding a live conversation's judge check. Narrowed to exactly mention/reply-to-Lu/keyword. |
+| Judge timeout raised to 30s and prompt bounded (R13) | The live check showed the judge always timed out on real conversation history: Lu's own long replies made the judge prompt too large for the mini's ~25 tok/s uncached read speed, silently degrading conversation-following to direct-address-only. Fix: truncate each judge context line to a bounded length and raise `ADDRESSEE_TIMEOUT_SECONDS` from 15 to 30. |
+| Judged (last) line tail-capped at 600 chars, not head-truncated (R14) | R13's line-truncation also head-truncated the message under judgment, risking a false NO on a long message whose addressing cue sits at the end. The last entry is now exempt from head-truncation and instead tail-capped, since addressing cues sit at the end of a sentence. |
