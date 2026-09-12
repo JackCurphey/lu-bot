@@ -171,8 +171,12 @@ export function createConversation({
       // it before any of the outcomes below, none of which post it back.
       const { text: strippedText, request } = extractNickname(result.reply);
       let statusLine = null;
+      let renameSucceeded = false;
       if (!request) {
-        // No marker: nothing to do.
+        // No marker. If a rename was actually asked for, the decision log
+        // should say the model never sent one back — "lu explain" otherwise
+        // has nothing to point to for a rename that silently never happened.
+        if (asksRename) rec?.reasons.push('asked for a rename but no NICKNAME line came back');
       } else if (!asksRename) {
         rec?.reasons.push('ignored a NICKNAME line nobody asked for');
       } else if (!entry.inGuild) {
@@ -184,6 +188,7 @@ export function createConversation({
       } else if (request.reset) {
         const outcome = await state.io.applyNickname(null);
         if (outcome.ok) {
+          renameSucceeded = true;
           rec?.reasons.push('reset nickname to the default');
         } else {
           statusLine = NICKNAME_LINES[outcome.reason] ?? null;
@@ -197,6 +202,7 @@ export function createConversation({
         } else {
           const outcome = await state.io.applyNickname(validation.name);
           if (outcome.ok) {
+            renameSucceeded = true;
             rec?.reasons.push(`changed nickname to "${validation.name}"`);
           } else {
             statusLine = NICKNAME_LINES[outcome.reason] ?? null;
@@ -209,6 +215,15 @@ export function createConversation({
         ? (strippedText ? `${strippedText}\n\n${statusLine}` : statusLine)
         : strippedText;
       if (combined === '') {
+        if (renameSucceeded) {
+          // A marker-only reply whose rename worked has nothing left to post
+          // — no status line, no leftover text. Renaming himself is not a
+          // failure, so this must not fall into the empty-reply/headache
+          // path (which would post the headache in the same breath as the
+          // rename). Stay silent; the decision log still says what happened.
+          rec?.reasons.push('replied with a nickname change only');
+          return;
+        }
         await fail('empty reply after stripping reasoning');
         return;
       }
@@ -222,6 +237,7 @@ export function createConversation({
       history.record({
         messageId: id, channelId, authorId: 'lu', name: 'Lu', isBot: true, isLu: true,
         mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
+        inGuild: false, authorCanManageNicknames: false,
         at: now(), text,
       });
       if (rec) {

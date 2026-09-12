@@ -1,4 +1,5 @@
 import { verifyQuotes, checkQuoteLength, UNAMBIGUOUS_PAIRS } from './quotes.js';
+import { MARKER_LINE_RE } from './nickname.js';
 
 // The chat model emits reasoning tokens on every reply, and none of
 // chat_template_kwargs, /no_think or reasoning_effort disables it through LM
@@ -118,7 +119,22 @@ export async function respondWithReason({ message, chunks, history, persona, llm
   // Cut off at the cap: drop the half-finished tail so he never stops
   // mid-sentence. Lu writes with minimal punctuation by design, so a reply
   // with no sentence end at all keeps its last whole word instead.
-  const reply = finishReason === 'length' ? trimCutOff(stripped) : stripped;
+  let reply = finishReason === 'length' ? trimCutOff(stripped) : stripped;
+  // trimCutOff treats "\n" as a cut terminator like any other, so a rename
+  // reply whose marker sits on its own trailing line can have that whole
+  // line cut away when the model hits the token cap — the rename then
+  // silently never happens. extraInstruction is only ever set for a message
+  // that asked for a rename (see conversation.js), so it is the signal that
+  // this reply was allowed to carry a marker at all; when trimming has
+  // dropped it, re-append the first marker line exactly as it appeared in
+  // the untrimmed text so extractNickname downstream still sees it.
+  if (finishReason === 'length' && extraInstruction) {
+    const markerMatch = MARKER_LINE_RE.exec(stripped);
+    if (markerMatch && !MARKER_LINE_RE.test(reply)) {
+      const markerLine = markerMatch[0].trimEnd();
+      reply = reply ? `${reply}\n${markerLine}` : markerLine;
+    }
+  }
   if (reply === '') {
     return { ok: false, reason: 'empty reply after stripping reasoning' };
   }

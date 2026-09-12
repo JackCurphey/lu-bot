@@ -4,6 +4,7 @@ import { createConversation, HEADACHE } from '../src/conversation.js';
 import { createHistory } from '../src/history.js';
 import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
 import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
+import { respondWithReason } from '../src/responder.js';
 
 const config = {
   trigger: {
@@ -332,12 +333,14 @@ test('a marker in a reply to a message that never asked is stripped, no applyNic
   assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('ignored a NICKNAME line nobody asked for'));
 });
 
-test('a reply that is only a marker and succeeds posts the headache rather than an empty message', async () => {
+test('a reply that is only a marker and the rename succeeds posts nothing, and records the reason', async () => {
   const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'NICKNAME: Bob' }) });
   const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
   await say(s, m);
-  assert.deepEqual(s.sent, [HEADACHE]);
+  assert.deepEqual(s.sent, []);
   assert.deepEqual(s.calls.applyNickname, ['Bob']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('replied with a nickname change only'));
+  assert.equal(s.history.entries('chan').some((e) => e.isLu), false, 'nothing was posted, so nothing enters history');
 });
 
 test('a reply that is only a marker and fails posts the status line alone, never empty', async () => {
@@ -364,6 +367,51 @@ test('a name over 32 characters is refused with the tooLong line', async () => {
   await say(s, m);
   assert.deepEqual(s.calls.applyNickname, []);
   assert.deepEqual(s.sent, [`sure\n\n${NICKNAME_LINES.tooLong}`]);
+});
+
+// --- Fix round 1, Important 3(b): a rename request with no marker back --------
+
+test('a rename request whose reply carries no NICKNAME line records the reason', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure comrade, no marker here' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, ['sure comrade, no marker here']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('asked for a rename but no NICKNAME line came back'));
+});
+
+test('an ordinary message with no marker back does not record the no-marker reason', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'just chatting' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu how are you' });
+  await say(s, m);
+  assert.equal(
+    s.decisions.find('chan', m.messageId).reasons.includes('asked for a rename but no NICKNAME line came back'),
+    false,
+  );
+});
+
+// --- Fix round 1, Important 3(a): a truncated rename applied end-to-end -------
+
+test('a length-cut reply keeps a trimmed-away marker and the nickname is applied end-to-end', async () => {
+  const filler = 'This is a fairly long sentence about comradeship and the state';
+  const content = `${filler}.\nNICKNAME: Bob`;
+  const llm = { async chatWithFinish() { return { content, finishReason: 'length' }; } };
+  const s = setup({ respondWithReason, llm, chooseChunks: async () => [] });
+  const m = msg({ mentionsLu: true, text: '@Lu change your name to Bob' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, ['Bob']);
+  assert.equal(s.sent.some((t) => t.includes('NICKNAME')), false, 'the marker must never reach Discord');
+});
+
+// --- Fix round 1, Minor 7: Lu's own history entry has the two new fields ------
+
+test('the history entry recorded for Lu\'s own message carries the two new Entry fields, both false', async () => {
+  const s = setup();
+  await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+  const last = s.history.entries('chan').at(-1);
+  assert.equal(last.isLu, true);
+  assert.equal(last.inGuild, false);
+  assert.equal(last.authorCanManageNicknames, false);
 });
 
 // --- One reply at a time -------------------------------------------------------

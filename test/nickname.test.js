@@ -5,6 +5,10 @@ import {
   extractNickname, validateNickname, NICKNAME_LINES,
 } from '../src/nickname.js';
 
+// Note: "go by Bob from now on" (with no leading "you") intentionally does
+// NOT match any more — see "the bare 'go by' alternative only matches when
+// addressed to Lu" below. This phrasing list uses "you go by" instead.
+
 // --- Request detection ----------------------------------------------------
 
 test('detects several rename phrasings', () => {
@@ -13,7 +17,7 @@ test('detects several rename phrasings', () => {
     'change your nick to Bob',
     'change your nickname to Bob',
     'call yourself Bob',
-    'go by Bob from now on',
+    'you go by Bob from now on',
     'rename yourself Bob',
     'set your name to Bob',
     'set your nick to Bob',
@@ -45,6 +49,14 @@ test('does not match unrelated messages', () => {
   for (const m of notRequests) {
     assert.doesNotMatch(m, NICKNAME_REQUEST_RE, `expected NOT to match: "${m}"`);
   }
+});
+
+// --- Fix round 1, Minor 4: "go by" must be addressed to Lu ------------------
+
+test('the bare "go by" alternative only matches when addressed to Lu', () => {
+  assert.doesNotMatch('i go by jack', NICKNAME_REQUEST_RE);
+  assert.doesNotMatch('most people go by their middle name', NICKNAME_REQUEST_RE);
+  assert.match('you go by Bob now', NICKNAME_REQUEST_RE);
 });
 
 test('NICKNAME_INSTRUCTION is under 900 characters', () => {
@@ -81,10 +93,38 @@ test('extractNickname does not match a marker that is not on its own line', () =
   assert.equal(out.text, 'I will not do NICKNAME: Bob today');
 });
 
-test('extractNickname takes only the first marker line', () => {
+// --- Fix round 1, Important 1: every marker line must be stripped ----------
+
+test('extractNickname strips every marker line but takes only the first as the request', () => {
   const out = extractNickname('NICKNAME: Bob\nNICKNAME: Carl');
   assert.deepEqual(out.request, { name: 'Bob' });
-  assert.equal(out.text, 'NICKNAME: Carl');
+  assert.equal(out.text, '');
+});
+
+test('extractNickname strips a repeated marker line with other text around it', () => {
+  const out = extractNickname('hi\nNICKNAME: Bob\nmore text\nNICKNAME: Carl\nbye');
+  assert.deepEqual(out.request, { name: 'Bob' });
+  assert.equal(out.text, 'hi\nmore text\nbye');
+});
+
+// --- Fix round 1, Important 2: a decorated marker must still be found ------
+
+test('a bold-decorated marker is removed from the text and recognised with the clean name', () => {
+  const out = extractNickname('sure comrade\n**NICKNAME: Bob**\nglad to help');
+  assert.deepEqual(out.request, { name: 'Bob' });
+  assert.equal(out.text, 'sure comrade\nglad to help');
+});
+
+test('a bullet-decorated marker is removed from the text and recognised with the clean name', () => {
+  const out = extractNickname('sure comrade\n- NICKNAME: Bob\nglad to help');
+  assert.deepEqual(out.request, { name: 'Bob' });
+  assert.equal(out.text, 'sure comrade\nglad to help');
+});
+
+test('a quote-block-decorated marker is removed from the text and recognised with the clean name', () => {
+  const out = extractNickname('sure comrade\n> NICKNAME: Bob\nglad to help');
+  assert.deepEqual(out.request, { name: 'Bob' });
+  assert.equal(out.text, 'sure comrade\nglad to help');
 });
 
 // --- Validation --------------------------------------------------------------
@@ -113,6 +153,16 @@ test('a user mention tag is rejected as mentions', () => {
 
 test('markdown characters are stripped', () => {
   assert.deepEqual(validateNickname('*Bob*_the_~great~'), { ok: true, name: 'Bobthegreat' });
+});
+
+// --- Fix round 1, Minor 5: quotes are stripped too --------------------------
+
+test('straight double quotes are stripped', () => {
+  assert.deepEqual(validateNickname('"Bob"'), { ok: true, name: 'Bob' });
+});
+
+test('curly double quotes are stripped', () => {
+  assert.deepEqual(validateNickname('“Bob”'), { ok: true, name: 'Bob' });
 });
 
 test('an empty name is rejected', () => {

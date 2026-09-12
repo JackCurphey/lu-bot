@@ -363,6 +363,36 @@ test('trimCutOff leaves a boundary in the first half alone, keeping the tail\'s 
   assert.equal(trimCutOff(text), 'ok. ' + 'word '.repeat(20).trim());
 });
 
+// --- Fix round 1, Important 3(a): a truncated rename must not lose the marker ----
+
+test('a length-cut reply whose NICKNAME marker would be trimmed away keeps the marker', async () => {
+  // The \n before NICKNAME: is itself a cut terminator and sits past the
+  // halfway point, so trimCutOff alone would cut right after it and drop
+  // the whole marker line — no rename, no trace. extraInstruction being
+  // present is what tells respondWithReason this reply was allowed to carry
+  // a marker at all, so the preservation only kicks in then.
+  const filler = 'This is a fairly long sentence about comradeship and the state';
+  const content = `${filler}.\nNICKNAME: Bob`;
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning(content, 'length'), config,
+    extraInstruction: 'DO THE THING',
+  });
+  assert.equal(out.ok, true);
+  assert.match(out.reply, /NICKNAME: Bob$/);
+});
+
+test('without extraInstruction a length-cut reply is trimmed exactly as before (no marker preservation)', async () => {
+  const filler = 'This is a fairly long sentence about comradeship and the state';
+  const content = `${filler}.\nNICKNAME: Bob`;
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning(content, 'length'), config,
+  });
+  assert.equal(out.ok, true);
+  assert.doesNotMatch(out.reply, /NICKNAME:/);
+});
+
 // --- Task 14 fix round 1: a trim must never invalidate a quotation ---------
 //
 // trimCutOff picked the last sentence boundary anywhere in the string, with
