@@ -33,17 +33,61 @@ export function buildMessages({ persona, chunks, history, message }) {
   ];
 }
 
+const CUT_OFF_TERMINATORS = ['. ', '! ', '? ', '\n', '。', '！', '？'];
+
+// A boundary is only safe to cut at when the text up to and including it
+// leaves quotation delimiters balanced. The model routinely closes a
+// supplied quotation and then keeps writing, unpunctuated, until the token
+// cap stops it — so the last sentence boundary in the whole string can sit
+// *inside* that quotation. Cutting there would discard the closing
+// delimiter, turning a reply whose quotation was valid before the trim into
+// one verifyQuotes rejects outright: silence for a reply that was fine.
+// Only the two delimiter styles the brief covers are checked here (straight
+// double quotes and 「」); a trim must never invalidate a quotation.
+function quotesBalanced(text) {
+  const straight = (text.match(/"/g) ?? []).length;
+  const open = (text.match(/「/g) ?? []).length;
+  const close = (text.match(/」/g) ?? []).length;
+  return straight % 2 === 0 && open === close;
+}
+
+function allIndicesOf(s, needle) {
+  const idxs = [];
+  let i = s.indexOf(needle);
+  while (i !== -1) {
+    idxs.push(i);
+    i = s.indexOf(needle, i + 1);
+  }
+  return idxs;
+}
+
 export function trimCutOff(text) {
   const s = String(text ?? '');
-  const boundary = Math.max(
-    s.lastIndexOf('. '), s.lastIndexOf('! '), s.lastIndexOf('? '), s.lastIndexOf('\n'),
-    s.lastIndexOf('。'), s.lastIndexOf('！'), s.lastIndexOf('？'),
-  );
-  // Only honour a boundary in the second half; otherwise a reply that opens
-  // with one short sentence would lose nearly everything.
-  if (boundary >= Math.floor(s.length / 2)) return s.slice(0, boundary + 1).trimEnd();
+  const half = Math.floor(s.length / 2);
+
+  // Every terminator occurrence is a candidate, not just the last one per
+  // style — the last occurrence overall might sit inside a quotation while
+  // an earlier one (still in the second half) does not. Walk candidates
+  // from the end and take the first that is both in the second half (the
+  // existing rule, so a reply opening with one short sentence does not lose
+  // nearly everything) and leaves quotations balanced.
+  const candidates = CUT_OFF_TERMINATORS.flatMap((t) => allIndicesOf(s, t))
+    .sort((a, b) => b - a);
+  for (const boundary of candidates) {
+    if (boundary < half) break; // sorted descending: nothing further qualifies
+    if (quotesBalanced(s.slice(0, boundary + 1))) {
+      return s.slice(0, boundary + 1).trimEnd();
+    }
+  }
+
   const lastSpace = s.lastIndexOf(' ');
-  return (lastSpace > 0 ? s.slice(0, lastSpace) : s).trimEnd();
+  const fallback = lastSpace > 0 ? s.slice(0, lastSpace) : s;
+  // The word-boundary fallback must not corrupt a quotation either. If it
+  // still leaves delimiters unbalanced, returning it untrimmed is safer
+  // than returning a mutilated quote: an over-long reply is cut to
+  // Discord's limit later anyway, and the quote checks are what matter here.
+  if (!quotesBalanced(fallback)) return s;
+  return fallback.trimEnd();
 }
 
 export async function respondWithReason({ message, chunks, history, persona, llm, config, signal }) {

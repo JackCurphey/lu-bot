@@ -327,3 +327,63 @@ test('trimCutOff leaves a boundary in the first half alone, keeping the tail\'s 
   const text = 'ok. ' + 'word '.repeat(20).trim() + ' contin';
   assert.equal(trimCutOff(text), 'ok. ' + 'word '.repeat(20).trim());
 });
+
+// --- Task 14 fix round 1: a trim must never invalidate a quotation ---------
+//
+// trimCutOff picked the last sentence boundary anywhere in the string, with
+// no awareness of quotation marks. When the model closes a supplied
+// quotation and then keeps writing in Lu's usual unpunctuated style until
+// the cap stops it, the last boundary in the string can be a full stop
+// *inside* that quotation — trimming there discards the closing delimiter,
+// so a reply whose quotation was valid and balanced before the trim becomes
+// unbalanced after it, and verifyQuotes rejects the whole reply.
+
+// This text is constructed so that, under the OLD boundary rule, the last
+// terminator (the "." inside the quotation, right before "It brooks") sits
+// past the halfway point of the string — so the old code accepted it and
+// cut there, discarding the closing ". Confirmed against the unmodified
+// trimCutOff before this fix: it returned a string with exactly one ", not
+// two, i.e. an unbalanced quotation.
+const QUOTED_CUT_OFF_TEXT =
+  'He said "Political power grows out of the barrel of a gun. It brooks no half measures." and comrades kno';
+
+test('trimCutOff does not cut inside a straight-quoted quotation', () => {
+  const out = trimCutOff(QUOTED_CUT_OFF_TEXT);
+  const quoteCount = (out.match(/"/g) ?? []).length;
+  assert.equal(quoteCount % 2, 0, `expected an even number of " in: ${out}`);
+  assert.ok(
+    out.endsWith('measures."') || /\w$/.test(out),
+    `expected the cut to land after the closing quote or at a whole word, got: ${out}`,
+  );
+});
+
+// Same construction with corner brackets: the "。" right before the closing
+// 」 sits past the halfway point, so the old code cut there and discarded
+// the 」. Confirmed against the unmodified trimCutOff: open count 1, close
+// count 0.
+const CORNER_BRACKET_CUT_OFF_TEXT = '他说「权力来自枪杆子。绝不能有丝毫松懈。」而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a corner-bracket quotation', () => {
+  const out = trimCutOff(CORNER_BRACKET_CUT_OFF_TEXT);
+  const openCount = (out.match(/「/g) ?? []).length;
+  const closeCount = (out.match(/」/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 「」 in: ${out}`);
+});
+
+test('trimCutOff behaves exactly as before on text with no quotations', () => {
+  const text = 'the revolution never sleeps. it will contin';
+  assert.equal(trimCutOff(text), 'the revolution never sleeps.');
+});
+
+test('end-to-end: a length-cut reply that quotes a corpus chunk verbatim and trails off still passes', async () => {
+  const chunkText = 'Political power grows out of the barrel of a gun. It brooks no half measures.';
+  const trailingOffChunks = [{ text: chunkText, source: { title: 'T', author: 'A' } }];
+  const cutOffReply = `He said "${chunkText}" and comrades kno`;
+  const out = await respondWithReason({
+    message: 'what did he say?', chunks: trailingOffChunks, history: [], persona,
+    llm: llmReturning(cutOffReply, 'length'), config,
+  });
+  assert.equal(out.ok, true, `expected the trimmed reply to pass quote checks, got: ${JSON.stringify(out)}`);
+  const quoteCount = (out.reply.match(/"/g) ?? []).length;
+  assert.equal(quoteCount % 2, 0);
+});
