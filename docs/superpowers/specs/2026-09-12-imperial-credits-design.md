@@ -408,8 +408,10 @@ each file defines a small local factory with an override spread
 
 ### Done-condition
 
-1. The full suite green **on the mini** — currently 167 tests, so the new total
-   must be stated and every test accounted for.
+1. The full suite green **on the mini**. Baseline measured 2026-09-12 on the
+   MacBook at this branch point: **350 tests, 350 pass, 0 fail**. (The 167
+   figure in `.agents/STATUS.md` is stale — it predates the stage 1 merge.)
+   The new total must be stated and every added test accounted for.
 2. A live check in `#lu-bot-chat`: earn credits from real messages, read them
    back with `lu credits`, see another member's with `lu credits @them`, see
    `lu leaderboard` ordered correctly, watch a level-up fire, and confirm a
