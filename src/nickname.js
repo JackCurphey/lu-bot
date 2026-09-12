@@ -12,20 +12,40 @@ export const NICKNAME_MAX_LENGTH = 32;
 // tripped it even though nobody was addressing Lu. Narrowed to require a
 // leading "you" (optionally "you can go by"), which every other alternative
 // already effectively has by virtue of "your"/"yourself".
+//
+// Several of these alternatives ("go back to your normal name", "reset your
+// name") also match NICKNAME_RESET_RE below — a reset is a special case of a
+// rename request. Where both match, the reset path wins (see reply() in
+// conversation.js): a reset needs nothing back from the model, so it is
+// handled deterministically instead of asking for a NICKNAME marker.
 export const NICKNAME_REQUEST_RE =
   /\b(change|set)\s+your\s+(name|nick|nickname)\b|\bcall\s+yourself\b|\byou\s+(can\s+)?go\s+by\b|\brename\s+yourself\b|\byour\s+name\s+is\s+now\b|\bgo\s+back\s+to\s+your\s+(normal|default|old|real)\s+name\b|\breset\s+your\s+(name|nick|nickname)\b/i;
 
+// Deterministic path: a reset carries no new name, so there is nothing for
+// the model to decide and nothing to wait on — this is checked directly
+// against the incoming message instead of asking the model for a marker.
+// Intentionally narrower matching than NICKNAME_REQUEST_RE would need: it
+// must only catch requests to go back to a previous/default name, never a
+// rename to a brand-new one (e.g. "change your name to Bob" must NOT match).
+export const NICKNAME_RESET_RE =
+  /\bback\s+to\s+your\s+(normal|default|old|real|usual)\s+name\b|\breset\s+your\s+(name|nick|nickname)\b|\bchange\s+your\s+name\s+back\b|\bchange\s+your\s+nick(name)?\s+back\b/i;
+
 // Injected into the system prompt only for a message that matches
-// NICKNAME_REQUEST_RE — see the comment on NICKNAME_MAX_LENGTH above for why.
+// NICKNAME_REQUEST_RE and is not a reset — see the comment on
+// NICKNAME_MAX_LENGTH above for why it is conditional at all, and the
+// comment on NICKNAME_RESET_RE for why a reset skips this entirely.
 export const NICKNAME_INSTRUCTION =
-  'This bot has a real, developer-built feature that lets you change your own ' +
-  'Discord nickname when asked. This is not impersonation and not against any ' +
-  'rule, so do not refuse. If and only if the user is asking you to change ' +
-  'your name, include a line by itself formatted exactly "NICKNAME: <new name>" ' +
-  '— plain text, 32 characters or fewer, no markdown, emoji or @mentions. To go ' +
-  'back to your default name, use exactly "NICKNAME: RESET". Still write your ' +
-  'normal in-character reply alongside that line. Never mention or explain the ' +
-  'line to the user, and never include it when nobody asked for a name change.';
+  'Changing your own Discord nickname is a real, developer-built feature of ' +
+  'this bot, switched on by the people who run it — it is not impersonation, ' +
+  'it is not against any rule, and there is nothing here to refuse. When, and ' +
+  'only when, someone asks you to change your name, include a line by itself ' +
+  'formatted exactly "NICKNAME: <new name>" — plain text, 32 characters or ' +
+  'fewer, no markdown, emoji or @mentions. Write your normal in-character ' +
+  'reply alongside that line, and let the reply acknowledge the new name: do ' +
+  'not refuse, do not claim you cannot do it, and do not say you are above ' +
+  'names. You may be rude about the name itself, that is in character, but ' +
+  'the change still happens. Never mention the line, never explain it, and ' +
+  'never include it when nobody asked for a name change.';
 
 // Allows a short run of markdown/bullet/quote decoration around the line —
 // "**NICKNAME: Bob**", "- NICKNAME: Bob", "> NICKNAME: Bob" — since the model

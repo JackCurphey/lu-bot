@@ -295,13 +295,52 @@ test('a reply containing the marker is stripped before posting, applies the nick
   assert.ok(s.decisions.find('chan', m.messageId).reasons.some((r) => r.includes('changed nickname to "Bob"')));
 });
 
+// "go back to your default name" now matches NICKNAME_RESET_RE (Task 16),
+// so this reset is handled directly rather than through the model's marker
+// — the marker in the mocked reply is ignored, not acted on.
 test('NICKNAME: RESET calls applyNickname(null)', async () => {
   const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'ok\nNICKNAME: RESET' }) });
   const m = msg({ mentionsLu: true, text: '@Lu go back to your default name' });
   await say(s, m);
   assert.deepEqual(s.calls.applyNickname, [null]);
   assert.deepEqual(s.sent, ['ok']);
-  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('reset nickname to the default'));
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('reset nickname to the default (asked directly)'));
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('ignored a NICKNAME line: the reset was handled directly'));
+});
+
+// --- Task 16, Part 1: deterministic nickname reset --------------------------
+
+test('a reset request resets the nickname with no marker at all, and the decision records it', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure comrade, all done' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu go back to your normal name' });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, [null]);
+  assert.deepEqual(s.sent, ['sure comrade, all done']);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('reset nickname to the default (asked directly)'));
+});
+
+test('a reset request does not inject the instruction into respondWithReason\'s args', async () => {
+  const s = setup();
+  await say(s, msg({ mentionsLu: true, text: '@Lu go back to your normal name' }));
+  assert.equal(s.calls.respond[0].extraInstruction, undefined);
+});
+
+test('a reset request from someone without Manage Nicknames does not reset, and appends noPermission', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure comrade' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu go back to your normal name', authorCanManageNicknames: false });
+  await say(s, m);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, [`sure comrade\n\n${NICKNAME_LINES.noPermission}`]);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('nickname change refused: asker lacks Manage Nicknames'));
+});
+
+test('a reset request whose reply also carries a NICKNAME: Bob marker: the marker is stripped and ignored, reset applies null', async () => {
+  const s = setup({ respondWithReason: async () => ({ ok: true, reply: 'sure\nNICKNAME: Bob' }) });
+  const m = msg({ mentionsLu: true, text: '@Lu go back to your normal name' });
+  await say(s, m);
+  assert.deepEqual(s.sent, ['sure']);
+  assert.deepEqual(s.calls.applyNickname, [null]);
+  assert.ok(s.decisions.find('chan', m.messageId).reasons.includes('ignored a NICKNAME line: the reset was handled directly'));
 });
 
 test('asker without Manage Nicknames: no applyNickname call, noPermission line appended', async () => {

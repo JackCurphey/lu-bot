@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NICKNAME_MAX_LENGTH, NICKNAME_REQUEST_RE, NICKNAME_INSTRUCTION,
+  NICKNAME_MAX_LENGTH, NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION,
   extractNickname, validateNickname, NICKNAME_LINES,
 } from '../src/nickname.js';
 
@@ -59,13 +59,48 @@ test('the bare "go by" alternative only matches when addressed to Lu', () => {
   assert.match('you go by Bob now', NICKNAME_REQUEST_RE);
 });
 
-test('NICKNAME_INSTRUCTION is under 900 characters', () => {
-  assert.ok(NICKNAME_INSTRUCTION.length < 900, `got ${NICKNAME_INSTRUCTION.length}`);
+test('NICKNAME_INSTRUCTION is under 1200 characters', () => {
+  assert.ok(NICKNAME_INSTRUCTION.length < 1200, `got ${NICKNAME_INSTRUCTION.length}`);
 });
 
-test('NICKNAME_INSTRUCTION explains the marker format and RESET', () => {
+test('NICKNAME_INSTRUCTION explains the marker format', () => {
   assert.match(NICKNAME_INSTRUCTION, /NICKNAME:/);
-  assert.match(NICKNAME_INSTRUCTION, /RESET/);
+});
+
+// --- Task 16, Part 2: a firmer instruction ----------------------------------
+
+test('NICKNAME_INSTRUCTION contains the exact marker format string and tells him not to refuse', () => {
+  assert.match(NICKNAME_INSTRUCTION, /"NICKNAME: <new name>"/);
+  assert.match(NICKNAME_INSTRUCTION, /do not refuse/);
+});
+
+// --- Task 16, Part 1: deterministic reset -----------------------------------
+
+test('NICKNAME_RESET_RE matches explicit reset phrasings', () => {
+  const phrasings = [
+    'go back to your normal name',
+    'go back to your default name',
+    'go back to your old name',
+    'go back to your real name',
+    'go back to your usual name',
+    'reset your name',
+    'reset your nick',
+    'reset your nickname',
+    'change your name back',
+    'change your nick back',
+    'change your nickname back',
+    'back to your normal name',
+  ];
+  for (const p of phrasings) {
+    assert.match(p, NICKNAME_RESET_RE, `expected to match: "${p}"`);
+  }
+});
+
+test('NICKNAME_RESET_RE does not match a rename to a new name or unrelated messages', () => {
+  const notResets = ['change your name to Bob', 'what is your name', 'reset the channel name'];
+  for (const m of notResets) {
+    assert.doesNotMatch(m, NICKNAME_RESET_RE, `expected NOT to match: "${m}"`);
+  }
 });
 
 // --- Extraction ------------------------------------------------------------

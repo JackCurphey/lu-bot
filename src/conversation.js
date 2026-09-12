@@ -4,7 +4,7 @@ import { toChatTurns } from './history.js';
 import { EXPLAIN_RE, NOT_FOUND, formatDecision } from './decisions.js';
 import { withTimeout, TimeoutError } from './timeout.js';
 import { truncateForDiscord } from './discord.js';
-import { NICKNAME_REQUEST_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
+import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
 // 'empty' has no line of its own (it only arises from a hand-crafted marker
@@ -139,6 +139,10 @@ export function createConversation({
     try {
       typing = state.io.startTyping();
       const asksRename = config.nickname.enabled && NICKNAME_REQUEST_RE.test(entry.text);
+      // A reset carries no name, so nothing has to come back from the model
+      // — it is handled directly below, and (per the comment on
+      // NICKNAME_RESET_RE) never needs the instruction injected.
+      const asksReset = config.nickname.enabled && NICKNAME_RESET_RE.test(entry.text);
       let result;
       try {
         const { prior } = split(channelId, entry);
@@ -152,7 +156,7 @@ export function createConversation({
             llm,
             config,
             signal,
-            extraInstruction: asksRename ? NICKNAME_INSTRUCTION : undefined,
+            extraInstruction: asksRename && !asksReset ? NICKNAME_INSTRUCTION : undefined,
           });
         }, config.reply.timeoutSeconds * 1000, { setTimeoutImpl, clearTimeoutImpl });
       } catch (err) {
@@ -172,7 +176,33 @@ export function createConversation({
       const { text: strippedText, request } = extractNickname(result.reply);
       let statusLine = null;
       let renameSucceeded = false;
-      if (!request) {
+      if (asksReset) {
+        // Deterministic path: no marker was ever expected here (the
+        // instruction was not even injected), so there is no "no NICKNAME
+        // line came back" diagnostic to raise — that reason is reserved for
+        // a genuine rename the model failed to act on. Run the same guards,
+        // in the same order, as the marker-driven path below.
+        if (!entry.inGuild) {
+          statusLine = NICKNAME_LINES.notInGuild;
+          rec?.reasons.push('nickname change refused: not in a server');
+        } else if (config.nickname.requirePermission && !entry.authorCanManageNicknames) {
+          statusLine = NICKNAME_LINES.noPermission;
+          rec?.reasons.push('nickname change refused: asker lacks Manage Nicknames');
+        } else {
+          const outcome = await state.io.applyNickname(null);
+          if (outcome.ok) {
+            renameSucceeded = true;
+            rec?.reasons.push('reset nickname to the default (asked directly)');
+          } else {
+            statusLine = NICKNAME_LINES[outcome.reason] ?? null;
+            rec?.reasons.push(`nickname change failed: ${outcome.reason}`);
+          }
+        }
+        // A marker in the same reply was already stripped above; the reset
+        // was already handled directly, so that marker's own request (rename
+        // or reset) is ignored rather than acted on a second time.
+        if (request) rec?.reasons.push('ignored a NICKNAME line: the reset was handled directly');
+      } else if (!request) {
         // No marker. If a rename was actually asked for, the decision log
         // should say the model never sent one back — "lu explain" otherwise
         // has nothing to point to for a rename that silently never happened.
