@@ -1,32 +1,127 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldHandle, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS } from '../src/discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS } from '../src/discord.js';
+
+// --- Old Lu stage 1: hear everything in allowed channels ------------------------
+//
+// Lu follows the conversation, so the adapter passes on every message in an
+// allowed channel — other bots included (they are heard, never answered; that
+// rule lives in attention.js). Only his own messages and other channels are
+// dropped here.
 
 const opts = { botId: 'bot', allowedChannels: ['chan'] };
-const base = { authorId: 'human', authorIsBot: false, channelId: 'chan', mentionsBot: true };
-
-test('handles a mention from a human in an allowed channel', () => {
-  assert.equal(shouldHandle(base, opts), true);
+const view = (over = {}) => ({
+  id: 'm1', channelId: 'chan', author: { id: 'human', bot: false, displayName: 'sam' },
+  content: 'hello', mentionedUsers: [], repliedUserId: null, createdTimestamp: 1000, ...over,
 });
 
-test('ignores its own messages', () => {
-  assert.equal(shouldHandle({ ...base, authorId: 'bot' }, opts), false);
+test('observes a human message in an allowed channel, mention or not', () => {
+  assert.equal(shouldObserve(view(), opts), true);
 });
 
-test('ignores other bots', () => {
-  assert.equal(shouldHandle({ ...base, authorIsBot: true }, opts), false);
+test('observes other bots, so their messages reach history', () => {
+  assert.equal(shouldObserve(view({ author: { id: 'b2', bot: true, displayName: 'b2' } }), opts), true);
 });
 
-test('ignores channels not on the allowlist', () => {
-  assert.equal(shouldHandle({ ...base, channelId: 'other' }, opts), false);
+test('drops its own messages', () => {
+  assert.equal(shouldObserve(view({ author: { id: 'bot', bot: true, displayName: 'Lu' } }), opts), false);
 });
 
-test('ignores messages that do not mention it', () => {
-  assert.equal(shouldHandle({ ...base, mentionsBot: false }, opts), false);
+test('drops channels not on the allowlist, and an empty allowlist permits none', () => {
+  assert.equal(shouldObserve(view({ channelId: 'other' }), opts), false);
+  assert.equal(shouldObserve(view(), { ...opts, allowedChannels: [] }), false);
 });
 
-test('an empty allowlist permits no channels', () => {
-  assert.equal(shouldHandle(base, { ...opts, allowedChannels: [] }), false);
+test('toEntry maps the view to an entry', () => {
+  assert.deepEqual(toEntry(view({ repliedUserId: 'ana' }), { botId: 'bot' }), {
+    messageId: 'm1', channelId: 'chan', authorId: 'human', name: 'sam',
+    isBot: false, isLu: false, mentionsLu: false, mentionsOthers: false,
+    repliesToLu: false, repliesToOther: true, at: 1000, text: 'hello',
+    authorCanManageNicknames: false, inGuild: false,
+  });
+});
+
+// --- Task 15: nickname change permission and guild fields ------------------
+
+test('toEntry carries authorCanManageNicknames and inGuild from the view', () => {
+  const entry = toEntry(view({ authorCanManageNicknames: true, inGuild: true }), { botId: 'bot' });
+  assert.equal(entry.authorCanManageNicknames, true);
+  assert.equal(entry.inGuild, true);
+});
+
+test('toEntry defaults authorCanManageNicknames and inGuild to false when absent from the view', () => {
+  const entry = toEntry(view(), { botId: 'bot' });
+  assert.equal(entry.authorCanManageNicknames, false);
+  assert.equal(entry.inGuild, false);
+});
+
+// Open bug in .agents/STATUS.md: stripping the mention tag left a bare "@Lu"
+// message empty, and the model server rejects empty content with HTTP 400.
+test('a bare mention of Lu becomes "@Lu", never empty text', () => {
+  const entry = toEntry(view({ content: '<@bot>', mentionedUsers: [{ id: 'bot', displayName: 'Lu Bot' }] }), { botId: 'bot' });
+  assert.equal(entry.text, `@${LU_NAME}`);
+  assert.equal(entry.mentionsLu, true);
+});
+
+test('other user mentions become @displayName; unknown ones @someone', () => {
+  const entry = toEntry(view({
+    content: 'ask <@!ana> or <@999> in <#123>',
+    mentionedUsers: [{ id: 'ana', displayName: 'ana' }],
+  }), { botId: 'bot' });
+  assert.equal(entry.text, 'ask @ana or @someone in <#123>');
+  assert.equal(entry.mentionsOthers, true);
+  assert.equal(entry.mentionsLu, false);
+});
+
+test('a reply to Lu is flagged as such', () => {
+  const entry = toEntry(view({ repliedUserId: 'bot' }), { botId: 'bot' });
+  assert.equal(entry.repliesToLu, true);
+  assert.equal(entry.repliesToOther, false);
+});
+
+test('Lu posts as a plain channel message that pings nobody, never as a reply', async () => {
+  const calls = [];
+  const channel = {
+    async send(payload) { calls.push(['send', payload]); return { id: 'new1' }; },
+    async reply() { calls.push(['reply']); },
+    sendTyping: async () => {},
+  };
+  const id = await createChannelIo(channel).send('wot');
+  assert.equal(id, 'new1');
+  assert.deepEqual(calls, [['send', { content: 'wot', allowedMentions: { parse: [] } }]]);
+});
+
+test('createChannelIo.applyNickname sets the nickname and reports ok', async () => {
+  const calls = [];
+  const channel = {
+    guild: { members: { me: { async setNickname(name) { calls.push(name); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname('Bob');
+  assert.deepEqual(out, { ok: true });
+  assert.deepEqual(calls, ['Bob']);
+});
+
+test('createChannelIo.applyNickname(null) clears the nickname', async () => {
+  const calls = [];
+  const channel = {
+    guild: { members: { me: { async setNickname(name) { calls.push(name); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname(null);
+  assert.deepEqual(out, { ok: true });
+  assert.deepEqual(calls, [null]);
+});
+
+test('createChannelIo.applyNickname reports refused when Discord rejects the change', async () => {
+  const channel = {
+    guild: { members: { me: { async setNickname() { throw new Error('Missing Permissions'); } } } },
+  };
+  const out = await createChannelIo(channel).applyNickname('Bob');
+  assert.deepEqual(out, { ok: false, reason: 'refused' });
+});
+
+test('createChannelIo.applyNickname reports notInGuild when the channel has no guild', async () => {
+  const out = await createChannelIo({}).applyNickname('Bob');
+  assert.deepEqual(out, { ok: false, reason: 'notInGuild' });
 });
 
 // --- Whole-branch review, finding F: Discord's 2000-character reply limit ---

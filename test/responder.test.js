@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessages, respond, stripThinking } from '../src/responder.js';
+import { buildMessages, respond, respondWithReason, stripThinking, trimCutOff } from '../src/responder.js';
 
 const persona = 'You are Lu Bot.';
 const chunks = [{ text: 'Political power grows out of the barrel of a gun.', source: { title: 'T', author: 'A' } }];
-const config = { trigger: { maxQuoteChars: 400 }, llm: { chatModel: 'chat' } };
+const config = { trigger: { maxQuoteChars: 400 }, llm: { chatModel: 'chat' }, reply: { maxTokens: 120 } };
 
-const llmReturning = (content) => ({ async chat() { return content; } });
+const llmReturning = (content, finishReason = 'stop') => ({
+  async chatWithFinish() { return { content, finishReason }; },
+});
 
 test('system message carries the persona', () => {
   const messages = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
@@ -242,4 +244,257 @@ test('E: with a corpus an undelimited attribution is still dropped', async () =>
     await respondWith(`As Ada Placeholder wrote in Some Work: ${INVENTED}`, NEUTRAL_CHUNKS),
     null,
   );
+});
+
+// --- Old Lu stage 1: failures carry their cause --------------------------------
+//
+// "lu explain" and the headache signal need to know why a reply was dropped.
+// respond() keeps returning null so every test above stays as it was.
+
+test('respondWithReason returns the reply when it passes', async () => {
+  const out = await respondWithReason({
+    message: 'hello', chunks: [], history: [], persona, llm: llmReturning('good morning comrade'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'good morning comrade' });
+});
+
+test('respondWithReason names an empty reply', async () => {
+  const out = await respondWithReason({
+    message: 'hello', chunks: [], history: [], persona, llm: llmReturning('<think>hmm</think>'), config,
+  });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /empty reply/);
+});
+
+test('respondWithReason names a failed quote check', async () => {
+  const out = await respondWithReason({
+    message: 'what did he say?', chunks, history: [], persona,
+    llm: llmReturning('He wrote, "This sentence appears in no supplied chunk at all."'), config,
+  });
+  assert.equal(out.ok, false);
+  assert.match(out.reason, /^quote check failed: /);
+});
+
+test('respondWithReason passes the abort signal to the model call', async () => {
+  let seen;
+  const llm = {
+    async chatWithFinish(args) { seen = args.signal; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
+  const controller = new AbortController();
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config, signal: controller.signal });
+  assert.equal(seen, controller.signal);
+});
+
+// --- Task 14: shorter replies -------------------------------------------------
+
+// --- Task 15: extraInstruction injection ---------------------------------
+
+test('buildMessages appends extraInstruction to the system message after the corpus block', () => {
+  const messages = buildMessages({ persona, chunks: [], history: [], message: 'hi', extraInstruction: 'DO THE THING' });
+  assert.ok(messages[0].content.endsWith('\n\n---\n\nDO THE THING'));
+});
+
+test('buildMessages leaves the system message unchanged when extraInstruction is not given', () => {
+  const withArg = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
+  const withoutArg = buildMessages({ persona, chunks: [], history: [], message: 'hi', extraInstruction: undefined });
+  assert.equal(withArg[0].content, withoutArg[0].content);
+  assert.ok(!withArg[0].content.includes('undefined'));
+});
+
+test('respondWithReason forwards extraInstruction into the built messages', async () => {
+  let seenMessages;
+  const llm = {
+    async chatWithFinish(args) { seenMessages = args.messages; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
+  await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona, llm, config, extraInstruction: 'DO THE THING',
+  });
+  assert.ok(seenMessages[0].content.includes('DO THE THING'));
+});
+
+test('respondWithReason without extraInstruction produces a byte-identical system message to before this task', async () => {
+  let seenMessages;
+  const llm = {
+    async chatWithFinish(args) { seenMessages = args.messages; return { content: 'ok comrade', finishReason: 'stop' }; },
+  };
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config });
+  const expected = buildMessages({ persona, chunks: [], history: [], message: 'hi' });
+  assert.equal(seenMessages[0].content, expected[0].content);
+});
+
+test('respondWithReason passes config.reply.maxTokens to the model call', async () => {
+  let seenMaxTokens;
+  const llm = {
+    async chatWithFinish(args) {
+      seenMaxTokens = args.maxTokens;
+      return { content: 'good morning comrade', finishReason: 'stop' };
+    },
+  };
+  await respondWithReason({ message: 'hi', chunks: [], history: [], persona, llm, config });
+  assert.equal(seenMaxTokens, 120);
+});
+
+test('a reply with finishReason stop is returned untouched, even without trailing punctuation', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('good morning comrade', 'stop'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'good morning comrade' });
+});
+
+test('a reply with finishReason length that ends mid-sentence is trimmed to the last sentence end', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('the revolution never sleeps. it will contin', 'length'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'the revolution never sleeps.' });
+});
+
+test('a reply with finishReason length and no sentence end anywhere is trimmed at the last whole word', async () => {
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning('the revolution never sleeps and it will contin', 'length'), config,
+  });
+  assert.deepEqual(out, { ok: true, reply: 'the revolution never sleeps and it will' });
+});
+
+test('trimCutOff leaves a boundary in the first half alone, keeping the tail\'s last whole word', () => {
+  const text = 'ok. ' + 'word '.repeat(20).trim() + ' contin';
+  assert.equal(trimCutOff(text), 'ok. ' + 'word '.repeat(20).trim());
+});
+
+// --- Fix round 1, Important 3(a): a truncated rename must not lose the marker ----
+
+test('a length-cut reply whose NICKNAME marker would be trimmed away keeps the marker', async () => {
+  // The \n before NICKNAME: is itself a cut terminator and sits past the
+  // halfway point, so trimCutOff alone would cut right after it and drop
+  // the whole marker line — no rename, no trace. extraInstruction being
+  // present is what tells respondWithReason this reply was allowed to carry
+  // a marker at all, so the preservation only kicks in then.
+  const filler = 'This is a fairly long sentence about comradeship and the state';
+  const content = `${filler}.\nNICKNAME: Bob`;
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning(content, 'length'), config,
+    extraInstruction: 'DO THE THING',
+  });
+  assert.equal(out.ok, true);
+  assert.match(out.reply, /NICKNAME: Bob$/);
+});
+
+test('without extraInstruction a length-cut reply is trimmed exactly as before (no marker preservation)', async () => {
+  const filler = 'This is a fairly long sentence about comradeship and the state';
+  const content = `${filler}.\nNICKNAME: Bob`;
+  const out = await respondWithReason({
+    message: 'hi', chunks: [], history: [], persona,
+    llm: llmReturning(content, 'length'), config,
+  });
+  assert.equal(out.ok, true);
+  assert.doesNotMatch(out.reply, /NICKNAME:/);
+});
+
+// --- Task 14 fix round 1: a trim must never invalidate a quotation ---------
+//
+// trimCutOff picked the last sentence boundary anywhere in the string, with
+// no awareness of quotation marks. When the model closes a supplied
+// quotation and then keeps writing in Lu's usual unpunctuated style until
+// the cap stops it, the last boundary in the string can be a full stop
+// *inside* that quotation — trimming there discards the closing delimiter,
+// so a reply whose quotation was valid and balanced before the trim becomes
+// unbalanced after it, and verifyQuotes rejects the whole reply.
+
+// This text is constructed so that, under the OLD boundary rule, the last
+// terminator (the "." inside the quotation, right before "It brooks") sits
+// past the halfway point of the string — so the old code accepted it and
+// cut there, discarding the closing ". Confirmed against the unmodified
+// trimCutOff before this fix: it returned a string with exactly one ", not
+// two, i.e. an unbalanced quotation.
+const QUOTED_CUT_OFF_TEXT =
+  'He said "Political power grows out of the barrel of a gun. It brooks no half measures." and comrades kno';
+
+test('trimCutOff does not cut inside a straight-quoted quotation', () => {
+  const out = trimCutOff(QUOTED_CUT_OFF_TEXT);
+  const quoteCount = (out.match(/"/g) ?? []).length;
+  assert.equal(quoteCount % 2, 0, `expected an even number of " in: ${out}`);
+  assert.ok(
+    out.endsWith('measures."') || /\w$/.test(out),
+    `expected the cut to land after the closing quote or at a whole word, got: ${out}`,
+  );
+});
+
+// Same construction with corner brackets: the "。" right before the closing
+// 」 sits past the halfway point, so the old code cut there and discarded
+// the 」. Confirmed against the unmodified trimCutOff: open count 1, close
+// count 0.
+const CORNER_BRACKET_CUT_OFF_TEXT = '他说「权力来自枪杆子。绝不能有丝毫松懈。」而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a corner-bracket quotation', () => {
+  const out = trimCutOff(CORNER_BRACKET_CUT_OFF_TEXT);
+  const openCount = (out.match(/「/g) ?? []).length;
+  const closeCount = (out.match(/」/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 「」 in: ${out}`);
+});
+
+test('trimCutOff behaves exactly as before on text with no quotations', () => {
+  const text = 'the revolution never sleeps. it will contin';
+  assert.equal(trimCutOff(text), 'the revolution never sleeps.');
+});
+
+// --- Task 14 fix round 2: the balance check only knew two delimiter styles -
+//
+// quotesBalanced hardcoded " and 「」 only. src/quotes.js independently
+// recognises several other unambiguous pairs (『』, «», 【】, ﹁﹂, 〈〉, 《》)
+// and treats an unpaired occurrence of any of them as an unverifiable quote.
+// 《…》 is the standard Chinese convention for a book or article title, so a
+// length-capped reply could be trimmed at a boundary that leaves a 《
+// unpaired — reproducing the exact silence bug fix round 1 closed, through a
+// delimiter family the round 1 fix never looked at.
+
+// Same construction as the round 1 corner-bracket case: the "。" right
+// before the closing 》 sits past the halfway point, so a balance check that
+// does not know about 《》 accepts that boundary and discards the 》.
+const CJK_TITLE_CUT_OFF_TEXT = '他说《权力来自枪杆子。绝不能有丝毫松懈。》而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a 《》 title citation', () => {
+  const out = trimCutOff(CJK_TITLE_CUT_OFF_TEXT);
+  const openCount = (out.match(/《/g) ?? []).length;
+  const closeCount = (out.match(/》/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 《》 in: ${out}`);
+});
+
+// Same construction again with 『』 (book/nested marks), to prove the fix
+// covers the whole table rather than special-casing 《》 alone.
+const BOOK_MARK_CUT_OFF_TEXT = '他说『权力来自枪杆子。绝不能有丝毫松懈。』而且同志们也明白这一点';
+
+test('trimCutOff does not cut inside a 『』 quotation', () => {
+  const out = trimCutOff(BOOK_MARK_CUT_OFF_TEXT);
+  const openCount = (out.match(/『/g) ?? []).length;
+  const closeCount = (out.match(/』/g) ?? []).length;
+  assert.equal(openCount, closeCount, `expected balanced 『』 in: ${out}`);
+});
+
+// Gap 2: the last-resort word-boundary fallback (`if (!quotesBalanced(fallback))
+// return s;`) had no test reaching it. This text has no sentence terminator
+// anywhere at all, so the boundary-selection loop finds no candidates and
+// falls straight through to the last-whole-word cut — which still leaves the
+// opening 《 with no closing partner anywhere in the string. The fallback
+// must be rejected too, returning the text untrimmed.
+const NO_BOUNDARY_UNPAIRED_TEXT = 'he said 《Political power grows out of the barrel of a gun and comrades kno';
+
+test('trimCutOff returns the text untrimmed when even the word-boundary fallback would leave a delimiter unpaired', () => {
+  const out = trimCutOff(NO_BOUNDARY_UNPAIRED_TEXT);
+  assert.equal(out, NO_BOUNDARY_UNPAIRED_TEXT);
+});
+
+test('end-to-end: a length-cut reply that quotes a corpus chunk verbatim and trails off still passes', async () => {
+  const chunkText = 'Political power grows out of the barrel of a gun. It brooks no half measures.';
+  const trailingOffChunks = [{ text: chunkText, source: { title: 'T', author: 'A' } }];
+  const cutOffReply = `He said "${chunkText}" and comrades kno`;
+  const out = await respondWithReason({
+    message: 'what did he say?', chunks: trailingOffChunks, history: [], persona,
+    llm: llmReturning(cutOffReply, 'length'), config,
+  });
+  assert.equal(out.ok, true, `expected the trimmed reply to pass quote checks, got: ${JSON.stringify(out)}`);
+  const quoteCount = (out.reply.match(/"/g) ?? []).length;
+  assert.equal(quoteCount % 2, 0);
 });

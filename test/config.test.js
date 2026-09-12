@@ -43,6 +43,7 @@ test('loadLlmConfig returns the correct shape with a default baseUrl', () => {
     chatModel: 'chat',
     judgeModel: 'judge',
     embedModel: 'embed',
+    addresseeModel: 'judge',
   });
 });
 
@@ -83,6 +84,7 @@ test('loadConfig still returns exactly the same llm section as before', () => {
     chatModel: 'chat',
     judgeModel: 'judge',
     embedModel: 'embed',
+    addresseeModel: 'judge',
   });
 });
 
@@ -102,4 +104,80 @@ test('I: an empty channel allowlist produces a startup warning', () => {
 
 test('I: a populated channel allowlist produces no warning', () => {
   assert.deepEqual(startupWarnings({ discord: { allowedChannels: ['123'] } }), []);
+});
+
+// --- Old Lu stage 1: conversation settings -----------------------------------
+//
+// Defaults are the values agreed in the stage 1 spec. They are asserted one by
+// one so a changed default is a visible, deliberate test change.
+
+test('stage 1 defaults', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.history, { limit: 20, trimTo: 10 });
+  assert.equal(cfg.trigger.cooldownSeconds, 60);
+  assert.deepEqual(cfg.trigger.keywords, ['lu', 'ai bot']);
+  assert.equal(cfg.trigger.randomReplyChance, 0.02);
+  assert.equal(cfg.trigger.windowMessages, 8);
+  assert.equal(cfg.trigger.windowMinutes, 5);
+  assert.equal(cfg.trigger.pauseSeconds, 3);
+  assert.equal(cfg.trigger.addresseeTimeoutSeconds, 30);
+  assert.deepEqual(cfg.reply, { timeoutSeconds: 90, maxTokens: 120 });
+});
+
+test('REPLY_MAX_TOKENS overrides the default', () => {
+  const cfg = loadConfig({ ...valid, REPLY_MAX_TOKENS: '200' });
+  assert.equal(cfg.reply.maxTokens, 200);
+});
+
+// A bounded judge prompt (see src/addressee.js) still runs ~250-300 tokens and
+// can queue behind a reply on a host that runs one model job at a time, so the
+// default carries headroom rather than a new floor. This is still overridable.
+test('ADDRESSEE_TIMEOUT_SECONDS overrides the default', () => {
+  const cfg = loadConfig({ ...valid, ADDRESSEE_TIMEOUT_SECONDS: '45' });
+  assert.equal(cfg.trigger.addresseeTimeoutSeconds, 45);
+});
+
+test('the addressee model defaults to the judge model', () => {
+  assert.equal(loadConfig(valid).llm.addresseeModel, 'judge');
+});
+
+test('the addressee model can be set on its own', () => {
+  const cfg = loadConfig({ ...valid, LLM_ADDRESSEE_MODEL: 'qwen3:1.7b' });
+  assert.equal(cfg.llm.addresseeModel, 'qwen3:1.7b');
+});
+
+test('trigger keywords are trimmed, lowercased and empty items dropped', () => {
+  const cfg = loadConfig({ ...valid, TRIGGER_KEYWORDS: ' Lu , Comrade ,, ' });
+  assert.deepEqual(cfg.trigger.keywords, ['lu', 'comrade']);
+});
+
+test('a trim size that is not below the history limit is rejected', () => {
+  assert.throws(
+    () => loadConfig({ ...valid, HISTORY_LIMIT: '20', HISTORY_TRIM_TO: '20' }),
+    (err) => err.message.includes('HISTORY_TRIM_TO'),
+  );
+});
+
+// --- Task 15: nickname config --------------------------------------------
+
+test('nickname defaults: enabled and requirePermission both true', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.nickname, { enabled: true, requirePermission: true });
+});
+
+test('NICKNAME_ENABLED=false disables the feature', () => {
+  const cfg = loadConfig({ ...valid, NICKNAME_ENABLED: 'false' });
+  assert.equal(cfg.nickname.enabled, false);
+});
+
+test('NICKNAME_REQUIRE_PERMISSION=false lets anyone ask', () => {
+  const cfg = loadConfig({ ...valid, NICKNAME_REQUIRE_PERMISSION: 'false' });
+  assert.equal(cfg.nickname.requirePermission, false);
+});
+
+test('a random reply chance outside 0..1 is rejected', () => {
+  assert.throws(
+    () => loadConfig({ ...valid, RANDOM_REPLY_CHANCE: '2' }),
+    (err) => err.message.includes('RANDOM_REPLY_CHANCE'),
+  );
 });

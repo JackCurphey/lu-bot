@@ -1,10 +1,65 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 
-export function shouldHandle(msg, { botId, allowedChannels }) {
-  if (msg.authorIsBot) return false;
-  if (msg.authorId === botId) return false;
-  if (!allowedChannels.includes(msg.channelId)) return false;
-  return msg.mentionsBot === true;
+// Every message in an allowed channel is passed on, so Lu can follow the
+// conversation. Whether he answers is decided later, in attention.js.
+export function shouldObserve(view, { botId, allowedChannels }) {
+  if (view.author.id === botId) return false;
+  return allowedChannels.includes(view.channelId);
+}
+
+export const LU_NAME = 'Lu';
+
+export function toEntry(view, { botId }) {
+  const names = new Map(view.mentionedUsers.map((u) => [u.id, u.displayName]));
+  // Mention tags are rendered, not deleted: deleting them left a bare "@Lu"
+  // message empty, which the model server rejects with HTTP 400.
+  const text = view.content
+    .replace(/<@!?(\d+|[A-Za-z0-9_-]+)>/g, (_, id) => `@${id === botId ? LU_NAME : (names.get(id) ?? 'someone')}`)
+    .trim();
+  const mentionedIds = view.mentionedUsers.map((u) => u.id);
+
+  return {
+    messageId: view.id,
+    channelId: view.channelId,
+    authorId: view.author.id,
+    name: view.author.displayName,
+    isBot: view.author.bot,
+    isLu: view.author.id === botId,
+    mentionsLu: mentionedIds.includes(botId),
+    mentionsOthers: mentionedIds.some((id) => id !== botId),
+    repliesToLu: view.repliedUserId === botId,
+    repliesToOther: view.repliedUserId != null && view.repliedUserId !== botId,
+    at: view.createdTimestamp,
+    text,
+    // Default false when absent so existing test fixtures (built before this
+    // task) keep working without adding these two fields to every one.
+    authorCanManageNicknames: view.authorCanManageNicknames ?? false,
+    inGuild: view.inGuild ?? false,
+  };
+}
+
+export function createChannelIo(channel) {
+  return {
+    // A plain message, not a Discord reply (user's choice), and one that can
+    // never ping @everyone or a user whatever the model writes.
+    async send(text) {
+      const sent = await channel.send({ content: text, allowedMentions: { parse: [] } });
+      return sent?.id ?? null;
+    },
+    startTyping: () => startTyping({ channel }),
+    // null clears the nickname (back to the default name).
+    async applyNickname(name) {
+      const me = channel.guild?.members?.me;
+      if (!me) return { ok: false, reason: 'notInGuild' };
+      try {
+        await me.setNickname(name);
+        return { ok: true };
+      } catch (err) {
+        console.warn(`Nickname change refused: ${err.message}`);
+        return { ok: false, reason: 'refused' };
+      }
+    },
+  };
 }
 
 // Discord rejects a message body over 2000 characters with
@@ -62,7 +117,28 @@ export function startTyping({
   return { stop: () => clearIntervalImpl(id) };
 }
 
-export async function startBot({ config, onMention }) {
+function viewOf(message) {
+  return {
+    id: message.id,
+    channelId: message.channelId,
+    author: {
+      id: message.author.id,
+      bot: message.author.bot,
+      displayName: message.member?.displayName ?? message.author.displayName,
+    },
+    content: message.content,
+    mentionedUsers: [...message.mentions.users.values()].map((u) => ({
+      id: u.id,
+      displayName: message.mentions.members?.get(u.id)?.displayName ?? u.displayName,
+    })),
+    repliedUserId: message.mentions.repliedUser?.id ?? null,
+    createdTimestamp: message.createdTimestamp,
+    authorCanManageNicknames: message.member?.permissions?.has(PermissionsBitField.Flags.ManageNicknames) ?? false,
+    inGuild: Boolean(message.guild),
+  };
+}
+
+export async function startBot({ config, onMessage }) {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -81,27 +157,14 @@ export async function startBot({ config, onMention }) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
-    const view = {
-      authorId: message.author.id,
-      authorIsBot: message.author.bot,
-      channelId: message.channelId,
-      mentionsBot: message.mentions.users.has(client.user.id),
-    };
-    if (!shouldHandle(view, { botId: client.user.id, allowedChannels: config.discord.allowedChannels })) {
+    const view = viewOf(message);
+    if (!shouldObserve(view, { botId: client.user.id, allowedChannels: config.discord.allowedChannels })) {
       return;
     }
-
-    const content = message.content.replace(/<@!?\d+>/g, '').trim();
-    const typing = startTyping({ channel: message.channel });
     try {
-      const reply = await onMention({ content, channelId: message.channelId, authorId: message.author.id });
-      if (reply) await message.reply(truncateForDiscord(reply));
+      await onMessage(toEntry(view, { botId: client.user.id }), createChannelIo(message.channel));
     } catch (err) {
-      console.error('Failed to handle mention:', err);
-    } finally {
-      // finally, not the try body: a dropped reply and a thrown error must
-      // both stop the indicator.
-      typing.stop();
+      console.error('Failed to handle message:', err);
     }
   });
 
