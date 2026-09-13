@@ -1,5 +1,56 @@
 # Lu Bot — status
 
+> **2026-09-13: Imperial Credits is built and reviewed on the MacBook only —
+> not deployed, not started, not live-checked.**
+>
+> Branch `spec/imperial-credits`, off `feat/mini-deployment`, tip `8ad5a10`.
+> Nothing pushed. Members now earn 15-25 Imperial Credits per eligible
+> message (not a bot, in a watched channel, at least 3 characters) on a
+> 30-second per-user cooldown. Level derives from credits by MEE6's
+> `5n² + 50n + 100` and is never stored. Commands: `lu credits`, `lu credits
+> @someone`, `lu leaderboard`, all plain text, none of them themselves earn
+> credits. Balances persist in `data/credits.json` — the first durable
+> runtime state Lu has ever had. Lu is told the speaker's own balance as
+> read-only prompt context and is instructed not to change or announce it.
+>
+> Spec: `docs/superpowers/specs/2026-09-12-imperial-credits-design.md`. Plan:
+> `docs/superpowers/plans/2026-09-13-imperial-credits.md` (10 tasks, all
+> complete). Full section-by-section verification, including everything
+> below, is `docs/superpowers/specs/2026-09-13-imperial-credits-verification.md`
+> — read it before resuming.
+>
+> **Suite: 438 tests, 438 pass, 0 fail, on the MacBook.** Baseline before this
+> work was 350 (the stale 167 figure quoted lower in this file predates the
+> stage 1 merge and has now been corrected there too).
+>
+> **What is NOT verified — read this before deploying.** The bot has never
+> been started; no connection to Discord has been made at any point in this
+> work. Nothing has run on the Mac mini. No credit has been earned in a real
+> channel, no command has been typed in Discord, no level-up has been seen
+> live. Above all, **the restart-and-check-the-balance test has not been
+> performed** — persistence is the only genuinely new capability this work
+> adds, and it is verified by unit tests against the store and by reading the
+> write path's code, not by starting the real bot, letting it write a real
+> balance, killing it, and confirming the number survives. This was a
+> deliberate ruling, not an oversight: starting the bot signs into a live
+> server other people are in, and that is an outward-facing action reserved
+> for a human, not something taken on the controller's own authority
+> mid-implementation.
+>
+> Two real defects were found only by reviewing the whole branch at once,
+> after every individual task had already passed its own review — see the
+> verification document's section on the history-ordering regression this
+> caught. Three separate task reports also failed the evidence-integrity bar
+> during this work (a duplicated test-output block presented as two runs, a
+> prose sentence presented as terminal output, and a mutation check that
+> killed no test); all three are described in the verification document with
+> what each cost.
+>
+> **Next action for the user:** deploy to the mini, work through the
+> live-check checklist at the end of the verification document — in order,
+> the restart check is the one that must not be skipped — and decide whether
+> this merges into `feat/mini-deployment`.
+
 > **2026-09-12: stage 1 of the old-Lu port is built, reviewed and running on
 > the mini.**
 > **Reply length (2026-09-12, after the live check):** the user found replies
@@ -97,7 +148,7 @@ embeddings. Benchmarked on the mini: ~13-15s per reply.
 | 1. Ollama contract tests, provider-neutral error | complete, reviewed clean (`b525a37`) |
 | 2. Typing indicator | complete, reviewed clean (`e39ec85`) |
 | 3. Node v26.8.1 + Ollama launchd service on mini | complete, reviewed clean |
-| 4. Scrub `.env.example`, deploy to mini by rsync | complete, reviewed (`d8ec09d`); **167/167 tests pass on the mini** |
+| 4. Scrub `.env.example`, deploy to mini by rsync | complete, reviewed (`d8ec09d`); **167/167 tests pass on the mini at that commit — stale as a current figure; the suite has since grown to 438 on the MacBook (2026-09-13), not yet re-run on the mini** |
 | 5. Lu as launchd service | steps 1-3 done (service was `running`); **live check FAILED — no reply** |
 | 6. Fault injection | not started |
 | 7. Host config + handover | FileVault checked (**On**); rest not started |
