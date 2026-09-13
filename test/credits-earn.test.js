@@ -70,6 +70,16 @@ test('a message below the minimum length earns nothing', () => {
   );
 });
 
+// Every other length test sits far either side of minChars, so flipping the
+// `<` in the length check to `<=` would leave them all green while a message
+// of exactly minChars stopped earning. This is the only test that would catch it.
+test('a message exactly at the minimum length earns', () => {
+  const store = fakeStore();
+  const got = awardForMessage(store, entry({ text: 'abc' }), { now: () => 100000, random: lowest, config: config() });
+  assert.equal(got.awarded, 15);
+  assert.equal(got.total, 15);
+});
+
 test('whitespace is not length', () => {
   const store = fakeStore();
   assert.equal(
