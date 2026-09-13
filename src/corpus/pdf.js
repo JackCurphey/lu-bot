@@ -16,7 +16,7 @@ export async function extractPdfText(bytes, { minChars }) {
   try {
     // Parsed once and reused: getDocumentProxy accepts the bytes, and both
     // extractText and getMeta accept the proxy.
-    pdf = await getDocumentProxy(bytes);
+    pdf = await getDocumentProxy(bytes, { verbosity: 0 });
     extracted = await extractText(pdf, { mergePages: false });
     meta = await getMeta(pdf);
   } catch (err) {
@@ -25,6 +25,8 @@ export async function extractPdfText(bytes, { minChars }) {
     throw new LearnError('unreadable', err?.message ?? 'could not parse the pdf');
   }
 
+  // Safe to call: the try block above ensures extracted is { totalPages, text: string[] }
+  // per the unpdf API contract, so join() and trim() will not throw.
   const text = extracted.text.join('\n\n').trim();
   // The scanned-PDF case (L7). There is no OCR here, and an empty document in
   // the corpus is worse than a refusal, because nothing downstream would ever
