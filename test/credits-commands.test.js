@@ -100,7 +100,7 @@ test('an empty leaderboard says so rather than showing nothing', () => {
 // is shown by id. Inventing a name would be fabricating data.
 test('a missing name falls back to the id', () => {
   const out = formatLeaderboard([{ userId: '9911', name: '', credits: 100 }]);
-  assert.match(out, /9911/);
+  assert.match(out, /<9911>/);
 });
 
 test('a level-up names the person and the level', () => {

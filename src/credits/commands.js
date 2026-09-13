@@ -28,7 +28,7 @@ export function formatLeaderboard(rows) {
   const lines = rows.map((r, i) => {
     // A member who earned credits before his display name was ever captured
     // is shown by id. Inventing a name would be fabricating data.
-    const who = r.name || r.userId;
+    const who = r.name || `<${r.userId}>`;
     return `${i + 1}. ${who} — ${n(r.credits)} (level ${progress(r.credits).level})`;
   });
   return ['the imperial ledger, highest first:', ...lines].join('\n');
