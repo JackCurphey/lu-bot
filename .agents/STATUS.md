@@ -1,10 +1,41 @@
 # Lu Bot — status
 
-> **2026-09-13: mischief modes are built and tested on the MacBook only —
-> not deployed, not started, not live-checked.**
+> **2026-09-13: mischief modes are merged, deployed and running on the mini —
+> but nobody has yet watched Lu use them in real conversation.**
 >
-> Branch `feat/mischief-modes`, off `main`. **Pushed and in sync with
-> `origin/feat/mischief-modes` at `9f6f5b9`.** No pull request opened.
+> Merged to `main` (fast-forward) and pushed; `origin/main` is at `6c17110`.
+> `feat/mischief-modes` also still on the remote. No pull request was opened.
+>
+> **Deployed to the mini at 17:53 on 2026-09-13.** Service
+> `com.curphey.lu-bot` restarted via `launchctl kickstart -k`, came up as PID
+> 1285, log reads `Lu Bot is online`, credit ledger loaded 2 members. The
+> full suite was run **on the mini itself**, not only on the MacBook: 477
+> tests, 477 pass. A `TokenInvalid` trace sits in `bot.err.log` but its last
+> write was 16:27, over an hour before this restart — it is the earlier token
+> rotation, not this deploy.
+>
+> **How deployment actually works, because the design doc is wrong.**
+> `docs/superpowers/specs/2026-09-10-mini-deployment-design.md` says the mini
+> clones the repo and deploys by `git pull` plus a restart. Neither half is
+> true. `~/lu-bot` on the mini has no `.git` directory — it is not a clone —
+> and `git` does not run on that machine at all: the Command Line Tools are
+> broken (`/Library/Developer/CommandLineTools` exists but holds only `usr`,
+> and `pkgutil` lists no CLTools receipts), so every git command dies on the
+> `xcrun` shim. Real delivery is a file copy plus a hand-written
+> `DEPLOYED_COMMIT` marker.
+>
+> This deploy used: a backup tarball first
+> (`~/lu-bot-backup-4402a14-20260913-175256.tar.gz`, excluding
+> `node_modules`), then `rsync -a --files-from=<git ls-files>` with **no
+> `--delete`**, so `.env`, `data/credits.json` and `node_modules` were never
+> touched. `.env` is not tracked; the only tracked path under `data/` is
+> `data/raw/.gitkeep`. Then the marker, then the restart. **Repeat that
+> shape, not the doc, until the doc is fixed or the Command Line Tools are
+> repaired** — the repair needs the user's password and has not been done.
+>
+> No `MOOD_*` variables were added to the mini's `.env`. They all default, so
+> modes came up at gossip 35, needler 30, narrator 20, windup 15. Re-tuning
+> is an `.env` edit plus a restart, not a deploy.
 >
 > Lu now picks one of four modes per reply — gossip, needler, narrator,
 > windup — and commits to it. The fragments and the weighted picker live in
@@ -47,6 +78,11 @@
 > `SHARED_MODE_RULES` in `src/mood.js`, which reaches all four modes at once;
 > a test fails if any mode stops carrying that constant.
 >
+> **Also found, unrelated and pre-existing:** the mini starts with `No corpus
+> found. Running persona-only.` — `~/lu-bot/data/raw/` is empty, so no corpus
+> has ever been ingested there. Lu has been answering without it. Not caused
+> by this work and not fixed by it.
+>
 > **Not checked at all:** whether he is actually funnier. That is not
 > unit-testable and needs him running in the real server. Also unchecked
 > live: whether modes firing on random chime-ins read as funny or unhinged
@@ -55,9 +91,11 @@
 > the 2% chime rate makes it rare, not impossible), whether windup at 15% is
 > still too much, and whether ~70 words gives the narrator room to land.
 >
-> **Next action for the user:** deploy to the mini, watch an evening of real
-> conversation, and re-tune `MOOD_WEIGHT_*` from what actually lands. Then
-> decide whether this merges to `main`.
+> **Next action for the user:** talk to Lu in the real server, watch an
+> evening of ordinary conversation, and re-tune `MOOD_WEIGHT_*` on the mini
+> from what actually lands. `lu explain` names the mode behind any given
+> reply, so a line that works or falls flat can be traced to the mode that
+> produced it.
 
 > **2026-09-13: Imperial Credits is built and reviewed on the MacBook only —
 > not deployed, not started, not live-checked.**
