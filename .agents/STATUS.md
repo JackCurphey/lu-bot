@@ -21,7 +21,9 @@
 > below, is `docs/superpowers/specs/2026-09-13-imperial-credits-verification.md`
 > — read it before resuming.
 >
-> **Suite: 438 tests, 438 pass, 0 fail, on the MacBook.** Baseline before this
+> **Suite: 451 tests, 451 pass, 0 fail**, on both the MacBook and the mini.
+> (438 at the point Imperial Credits merged; the server-allowlist work added 13.)
+> Baseline before this
 > work was 350 (the stale 167 figure quoted lower in this file predates the
 > stage 1 merge and has now been corrected there too).
 >
@@ -179,8 +181,9 @@ it on return with `pmset -g log | grep -E "Sleep|Wake"`.
 
 ## Next actions, in order
 
-1. **At the mini:** wake it, then run
-   `sudo pmset -a sleep 0 disksleep 0 displaysleep 10 womp 1 autorestart 1 powernap 0`
+1. ~~**At the mini:** apply the pmset settings.~~ **DONE** — verified
+   2026-09-13: `sleep 0`, `disksleep 0`, `autorestart 1`, `womp 1` are all in
+   effect. This entry was stale.
 2. **Tailscale** — user is creating an account. Once the MacBook and mini share a
    network, install it on the mini (and the PC) so `ssh mini` works from anywhere.
 3. Confirm the sleep cause from `pmset -g log`, check `~/Library/Logs/lu-bot/bot.log`.

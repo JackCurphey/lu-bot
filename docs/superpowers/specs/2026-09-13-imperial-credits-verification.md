@@ -295,6 +295,48 @@ against real Discord) was explicitly overridden and not run; Task 9 was
 instead verified by `node --check`, a throwaway store-lifecycle script
 exercising the store's real code path in isolation, and the test suite.
 
+## Update, 2026-09-13 evening: the live checks were completed
+
+Everything below this heading was written before the feature ran in front of
+real people. It has since been deployed and exercised, and the section titled
+"What is NOT verified" is now out of date in the ways recorded here.
+
+**Run on the Mac mini.** The full suite was executed on the deployment host
+(Node v26.8.1): **438 tests, 438 pass, 0 fail** at the time, and 451 after the
+server-allowlist work that followed. This closes the gap the original document
+recorded.
+
+**Credits earned by a real member.** A member of the server earned credits from
+ordinary conversation, reaching **159 credits over 7 messages**. The 15-25
+award range and the 30-second cooldown both behaved as specified: seven
+messages produced seven awards, not more.
+
+**Level 1 was crossed and the announcement fired.** Confirmed by the user in
+the channel. This is the first time the bot has spoken without being addressed.
+
+**The restart test passed, harder than it was designed.** The specification
+called for a service restart. What actually happened was better evidence: the
+ledger survived a token rotation, seven consecutive crash-loop restarts caused
+by an invalid token, a clean service restart, and finally a full physical
+power-down, the machine being unplugged and moved to another room, a cold boot
+and a FileVault unlock. The balance was read back intact every time.
+
+The crash loop is worth singling out. The graceful-shutdown path was already
+proven by a unit test and a local harness; seven abrupt terminations with no
+clean shutdown at all proved the debounced write had genuinely reached disk
+rather than depending on the exit handler.
+
+**Still not verified:** a message shorter than the three-character minimum
+earning nothing, `lu leaderboard` rendering with more than one member in it,
+and the two fault-injection cases (a corrupt ledger file refusing to start, and
+a missing one starting clean). Those remain on the checklist below.
+
+**One operational lesson.** Diagnosing the token outage was slowed because
+`bot.log` receives only successful startup lines; the actual error was in
+`bot.err.log`, a separate file named in the launchd plist and mentioned nowhere
+in the project documentation. Discord's own API (`GET /users/@me` returning 401,
+then 200) was the decisive check.
+
 ## What is NOT verified
 
 This is the load-bearing section of this document. Everything below is
