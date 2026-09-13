@@ -1,5 +1,65 @@
 # Lu Bot — status
 
+> **2026-09-13 (later): the ledger no longer crowds every reply, and the
+> politics are back in the modes. Merged, deployed, running — not yet watched
+> in real conversation.**
+>
+> `origin/main` at `7504039`; branch `feat/maoist-tuning` also pushed.
+> Deployed at 18:15, service restarted, PID 1499, `Lu Bot is online`, ledger
+> loaded 3 members, 491/491 on the mini. Same deploy shape as the entry below
+> (backup tarball `lu-bot-backup-6c17110-20260913-181534.tar.gz`, rsync from
+> `git ls-files`, no `--delete`, marker, kickstart). `bot.err.log` still last
+> written 16:27 — nothing new.
+>
+> **Both problems came from the mischief-modes work and the credits work
+> before it, and were reported from live use.**
+>
+> *Credits in almost every message.* The balance was injected into every
+> reply, while the fragment asked Lu not to force it in — an instruction with
+> no chance against a number in his context on every turn. Now split:
+> `CREDITS_STANDING_RULE` is always present and carries no number, and the
+> balance itself arrives only when somebody raises the subject
+> (`mentionsLedger`) or on an unprompted roll (`CREDITS_MENTION_CHANCE`,
+> default 0.15 — 0 means only when asked, 1 restores the old behaviour). The
+> user's call was explicitly that Lu keeps the opening to raise it himself,
+> just not constantly.
+>
+> The split is what makes the gate safe: gating alone would leave a phrasing
+> the keyword list misses talking about the ledger with no balance in context
+> and free to invent one. `credit` singular and `rank` are deliberately not
+> keywords — "the credit crunch" and "rank and file" are ordinary speech here.
+> `lu credits` / `lu leaderboard` are unaffected; they never reach the model.
+>
+> *He stopped sounding Maoist.* The four mode fragments were pure mischief
+> mechanics with no political content, so every reply carried a paragraph on
+> winding people up and nothing on being a Maoist. Each mode now has a
+> political shape (denouncing to the collective, congratulating revolutionary
+> progress, the register of an official announcement, naming the deviation),
+> `SHARED_MODE_RULES` says outright that the frame is class and contradiction,
+> and the persona base has the lens and the vocabulary back.
+>
+> **Suite: 491 tests, 491 pass** (477 before), on the MacBook and on the mini.
+> Two mutations confirmed the gate bites: forcing the balance in on every
+> reply killed the two "balance stays out" tests, and dropping the standing
+> rule killed its own test.
+>
+> **Three existing tests were changed, one of which matters.** Two broke
+> honestly on the new behaviour. The third was *passing for the wrong reason*:
+> it asserted `/imperial credits/`, which the new standing rule satisfies on
+> every reply, so it would have gone on passing with no balance present at
+> all. It now matches the number. A fourth trap was caught while writing the
+> new tests — the message under test earns credits before the reply is built,
+> so a balance seeded at 1,200 is 1,225 by the time the prompt is assembled,
+> and two negative assertions were passing because the number had moved rather
+> than because the fragment was withheld. `lastAwardAt` is now seeded to `now`
+> so the cooldown holds the balance still.
+>
+> **Next action for the user:** talk to Lu again and judge two things
+> separately — whether he reads as Maoist now, and whether credits come up at
+> about the right rate. They have different knobs: the first is
+> `persona/lu-bot.md` and the mode fragments in `src/mood.js`, the second is
+> `CREDITS_MENTION_CHANCE` on the mini, which is a restart, not a deploy.
+
 > **2026-09-13: mischief modes are merged, deployed and running on the mini —
 > but nobody has yet watched Lu use them in real conversation.**
 >
