@@ -6,6 +6,7 @@ import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
 import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 import { respondWithReason } from '../src/responder.js';
 import { CREDITS_DISABLED } from '../src/credits/commands.js';
+import { MODE_IDS, moodInstruction } from '../src/mood.js';
 
 const config = {
   trigger: {
@@ -814,4 +815,78 @@ test('F2: a reply following a level-up sees the announcement as prior context', 
   await say(s, msg({ text: 'lu since when', mentionsLu: true, authorId: 'u2', name: 'Ann' }));
   const history = s.calls.respond.at(-1).history;
   assert.ok(history.some((h) => /reaches level 1/.test(h.content)));
+});
+
+// --- Mischief modes ------------------------------------------------------------
+//
+// Which Lu answers. The fragment is chosen in src/mood.js and joined to the
+// same instructions array as the nickname and credits fragments, so these
+// tests are about the wiring: one mode per reply, none when it is off, and the
+// choice written into the decision log so "lu explain" can say.
+
+const MOOD_ON = { enabled: true, weights: { gossip: 35, needler: 30, narrator: 20, windup: 15 } };
+const withMood = (mood, over = {}) => setup({ config: { ...config, mood }, ...over });
+const extra = (s) => s.calls.respond.at(-1).extraInstruction;
+
+test('a reply carries exactly one mode fragment', async () => {
+  const s = withMood(MOOD_ON, { random: () => 0 });
+  await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+  const text = extra(s);
+  assert.ok(text.includes(moodInstruction('gossip')));
+  const others = MODE_IDS.filter((id) => id !== 'gossip');
+  for (const id of others) {
+    assert.ok(!text.includes(moodInstruction(id).split('\n')[0]), `${id} leaked in too`);
+  }
+});
+
+test('the injected random decides which mode answers', async () => {
+  for (const [r, id] of [[0, 'gossip'], [0.5, 'needler'], [0.7, 'narrator'], [0.9, 'windup']]) {
+    const s = withMood(MOOD_ON, { random: () => r });
+    await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+    assert.ok(extra(s).includes(moodInstruction(id)), `random ${r} should have picked ${id}`);
+  }
+});
+
+test('with modes off the reply carries no instruction at all', async () => {
+  const s = withMood({ enabled: false, weights: MOOD_ON.weights });
+  await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+  assert.equal(extra(s), undefined);
+});
+
+// A config built before modes existed -- as the mini's would be on a partial
+// deploy -- must behave as it always did rather than throwing.
+test('a config with no mood block replies as it did before modes existed', async () => {
+  const s = setup();
+  await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+  assert.equal(extra(s), undefined);
+});
+
+test('modes on but every weight zero adds no fragment', async () => {
+  const s = withMood({ enabled: true, weights: { gossip: 0, needler: 0, narrator: 0, windup: 0 } });
+  await say(s, msg({ mentionsLu: true, text: '@Lu hi' }));
+  assert.equal(extra(s), undefined);
+});
+
+test('the mode joins the nickname fragment rather than replacing it', async () => {
+  const s = withMood(MOOD_ON, { random: () => 0 });
+  await say(s, msg({ mentionsLu: true, text: '@Lu call yourself Chairman' }));
+  const text = extra(s);
+  assert.ok(text.includes(NICKNAME_INSTRUCTION));
+  assert.ok(text.includes(moodInstruction('gossip')));
+});
+
+test('"lu explain" says which Lu answered', async () => {
+  const s = withMood(MOOD_ON, { random: () => 0.9 });
+  const entry = msg({ mentionsLu: true, text: '@Lu hi' });
+  await say(s, entry);
+  const rec = s.decisions.find('chan', entry.messageId);
+  assert.ok(rec.reasons.some((r) => /mode: windup/.test(r)), rec.reasons.join(' | '));
+});
+
+test('a reply with no mode records no mode line', async () => {
+  const s = withMood({ enabled: false, weights: MOOD_ON.weights });
+  const entry = msg({ mentionsLu: true, text: '@Lu hi' });
+  await say(s, entry);
+  const rec = s.decisions.find('chan', entry.messageId);
+  assert.ok(!rec.reasons.some((r) => /mode:/.test(r)), rec.reasons.join(' | '));
 });

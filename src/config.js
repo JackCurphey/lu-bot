@@ -92,6 +92,22 @@ export function loadConfig(env) {
     throw new Error(`CREDITS_FLUSH_MS must not be negative, got ${credits.flushMs}`);
   }
 
+  // Which Lu answers (src/mood.js). Weights are relative, not percentages --
+  // pickMode normalises by their total -- but they are documented and defaulted
+  // as a mix summing to 100 because that is how they read when being tuned.
+  const MOOD_DEFAULTS = { gossip: 35, needler: 30, narrator: 20, windup: 15 };
+  const weights = {};
+  for (const [id, fallback] of Object.entries(MOOD_DEFAULTS)) {
+    const key = `MOOD_WEIGHT_${id.toUpperCase()}`;
+    const value = num(env, key, fallback);
+    if (value < 0) throw new Error(`${key} must not be negative, got ${value}`);
+    weights[id] = value;
+  }
+  const mood = {
+    enabled: (env.MOOD_ENABLED ?? 'true') !== 'false',
+    weights,
+  };
+
   return {
     discord: {
       token: env.DISCORD_BOT_TOKEN,
@@ -133,6 +149,7 @@ export function loadConfig(env) {
       requirePermission: (env.NICKNAME_REQUIRE_PERMISSION ?? 'true') !== 'false',
     },
     credits,
+    mood,
   };
 }
 
@@ -159,6 +176,21 @@ export function startupWarnings(config) {
       'DISCORD_DENIED_CHANNELS is set but DISCORD_ALLOWED_GUILDS is empty, so it excludes ' +
       'nothing: the denylist only narrows the server rule.',
     );
+  }
+  // Modes on with nothing weighted means pickMode returns null every time and
+  // every reply comes out in the flat pre-modes voice -- which looks exactly
+  // like the feature not working, with nothing anywhere saying why. Defaulted
+  // like the lists above: callers build config objects by hand in the suite.
+  const mood = config.mood ?? null;
+  if (mood?.enabled) {
+    const total = Object.values(mood.weights ?? {}).reduce((sum, w) => sum + w, 0);
+    if (total <= 0) {
+      warnings.push(
+        'MOOD_ENABLED is on but every MOOD_WEIGHT_* is zero: no mode will ever be ' +
+        'picked and every reply falls back to the plain voice. Set at least one ' +
+        'weight above zero, or set MOOD_ENABLED=false to mean it.',
+      );
+    }
   }
   return warnings;
 }

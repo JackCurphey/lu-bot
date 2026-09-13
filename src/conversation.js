@@ -6,6 +6,7 @@ import { withTimeout, TimeoutError } from './timeout.js';
 import { truncateForDiscord } from './discord.js';
 import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
 import { awardForMessage } from './credits/earn.js';
+import { pickMode, moodInstruction } from './mood.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
@@ -173,6 +174,17 @@ export function createConversation({
         // buildMessages branches on it and an ordinary reply's system message
         // must stay byte-identical to what it was before credits existed.
         const instructions = [];
+        // Which Lu answers, chosen per reply so the register varies instead of
+        // averaging into one flat voice (see the header of src/mood.js). Null
+        // when modes are off or nothing is weighted, and then nothing is added
+        // and the reply is byte-identical to what it was before modes existed.
+        const mode = config.mood?.enabled
+          ? pickMode({ weights: config.mood.weights ?? {}, random })
+          : null;
+        if (mode) {
+          instructions.push(moodInstruction(mode));
+          rec?.reasons.push(`mode: ${mode}`);
+        }
         if (asksRename && !asksReset) instructions.push(NICKNAME_INSTRUCTION);
         if (credits && config.credits?.enabled) {
           instructions.push(creditsInstruction({

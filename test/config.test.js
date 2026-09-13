@@ -287,3 +287,53 @@ test('warns when a denylist is set with no server allowlist', () => {
   const cfg = loadConfig({ ...valid, DISCORD_DENIED_CHANNELS: 'mods' });
   assert.ok(startupWarnings(cfg).some((w) => /excludes nothing/.test(w)));
 });
+
+// --- Mischief modes ------------------------------------------------------------
+
+test('the mode weights default to the starting mix', () => {
+  const cfg = loadConfig(valid);
+  assert.equal(cfg.mood.enabled, true);
+  assert.deepEqual(cfg.mood.weights, { gossip: 35, needler: 30, narrator: 20, windup: 15 });
+});
+
+test('each mode weight can be set on its own', () => {
+  const cfg = loadConfig({ ...valid, MOOD_WEIGHT_WINDUP: '0', MOOD_WEIGHT_GOSSIP: '50' });
+  assert.deepEqual(cfg.mood.weights, { gossip: 50, needler: 30, narrator: 20, windup: 0 });
+});
+
+test('modes can be switched off entirely', () => {
+  assert.equal(loadConfig({ ...valid, MOOD_ENABLED: 'false' }).mood.enabled, false);
+});
+
+test('a negative mode weight is rejected', () => {
+  assert.throws(
+    () => loadConfig({ ...valid, MOOD_WEIGHT_NARRATOR: '-1' }),
+    /MOOD_WEIGHT_NARRATOR must not be negative/,
+  );
+});
+
+// Parses cleanly and leaves every reply in the flat pre-modes voice, with
+// nothing anywhere saying why -- exactly what startupWarnings is for.
+test('warns when modes are on but every weight is zero', () => {
+  const cfg = loadConfig({
+    ...valid,
+    MOOD_WEIGHT_GOSSIP: '0', MOOD_WEIGHT_NEEDLER: '0',
+    MOOD_WEIGHT_NARRATOR: '0', MOOD_WEIGHT_WINDUP: '0',
+  });
+  assert.ok(startupWarnings(cfg).some((w) => /MOOD_WEIGHT/.test(w)));
+});
+
+test('no zero-weight warning when modes are switched off deliberately', () => {
+  const cfg = loadConfig({
+    ...valid, MOOD_ENABLED: 'false',
+    MOOD_WEIGHT_GOSSIP: '0', MOOD_WEIGHT_NEEDLER: '0',
+    MOOD_WEIGHT_NARRATOR: '0', MOOD_WEIGHT_WINDUP: '0',
+  });
+  assert.deepEqual(startupWarnings(cfg).filter((w) => /MOOD_WEIGHT/.test(w)), []);
+});
+
+// startupWarnings is called with hand-built config objects elsewhere in the
+// suite; a missing mood block must not throw.
+test('startupWarnings tolerates a config with no mood block', () => {
+  assert.deepEqual(startupWarnings({ discord: { allowedChannels: ['123'] } }), []);
+});
