@@ -237,6 +237,18 @@ test('a minimum above the maximum is rejected with both values', () => {
   );
 });
 
+test('a negative minimum award is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_MIN: '-1' }), /CREDITS_MIN/);
+});
+
+test('a negative minimum message length is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_MIN_CHARS: '-1' }), /CREDITS_MIN_CHARS/);
+});
+
+test('a negative flush interval is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_FLUSH_MS: '-1' }), /CREDITS_FLUSH_MS/);
+});
+
 test('a negative cooldown is rejected', () => {
   assert.throws(() => loadConfig({ ...valid, CREDITS_COOLDOWN_SECONDS: '-1' }), /CREDITS_COOLDOWN_SECONDS/);
 });
