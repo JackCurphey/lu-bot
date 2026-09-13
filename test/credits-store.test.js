@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readFile, writeFile, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -109,6 +109,49 @@ test('close flushes pending state', async () => {
   const raw = JSON.parse(await readFile(join(dir, CREDITS_FILE), 'utf8'));
   assert.equal(raw.users.u1.credits, 20);
   assert.equal(raw.version, 1);
+});
+
+// --- F3: write() is non-fatal while running, but a failed final flush must
+// not read as a clean shutdown ---
+// write() catches its own errors and only logs, so flush()/close() always
+// resolved -- the try/catch around `await creditStore?.close()` in
+// src/index.js was unreachable. Obstruct the write by making the tmp target
+// a directory, which makes writeFile(tmp, ...) fail reliably (EISDIR) without
+// relying on filesystem permission quirks.
+
+test('F3: a failing write during running does not throw', async () => {
+  const dir = await scratch();
+  const tmpPath = join(dir, `${CREDITS_FILE}.tmp`);
+  await mkdir(tmpPath);
+  const store = await createCreditStore({ dir, flushMs: 0 });
+  store.award('u1', { credits: 20, name: 'Bob', at: 1 });
+  await assert.doesNotReject(() => store.flush());
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('F3: a failing final write makes close() signal failure', async () => {
+  const dir = await scratch();
+  const tmpPath = join(dir, `${CREDITS_FILE}.tmp`);
+  await mkdir(tmpPath);
+  const store = await createCreditStore({ dir, flushMs: 0 });
+  store.award('u1', { credits: 20, name: 'Bob', at: 1 });
+  await assert.rejects(() => store.close());
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('F3: a write failure leaves the store dirty, so a later successful flush recovers', async () => {
+  const dir = await scratch();
+  const tmpPath = join(dir, `${CREDITS_FILE}.tmp`);
+  await mkdir(tmpPath);
+  const store = await createCreditStore({ dir, flushMs: 0 });
+  store.award('u1', { credits: 20, name: 'Bob', at: 1 });
+  await store.flush();
+  await rm(tmpPath, { recursive: true, force: true });
+  await store.flush();
+  const raw = JSON.parse(await readFile(join(dir, CREDITS_FILE), 'utf8'));
+  assert.equal(raw.users.u1.credits, 20);
+  await store.close();
+  await rm(dir, { recursive: true, force: true });
 });
 
 test('top is descending, capped, and breaks ties predictably', async () => {

@@ -107,7 +107,13 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     try {
       await creditStore?.close();
     } catch (err) {
+      // close() now rejects when the final flush did not succeed (F3 in the
+      // final review): every award since the last successful write would
+      // otherwise be lost with nothing but this log line to show for it, and
+      // exit 0 would tell launchd it was a clean stop. Exit non-zero so the
+      // log distinguishes "stopped" from "stopped and lost the ledger".
       console.error('Failed to flush the credit ledger on shutdown:', err);
+      process.exit(1);
     }
     process.exit(0);
   });

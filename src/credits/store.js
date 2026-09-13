@@ -48,6 +48,11 @@ export async function createCreditStore({
   let dirty = false;
   let timer = null;
   let writing = Promise.resolve();
+  // Set on a failed write, cleared on the next successful one. A mid-session
+  // write failure must never take the bot down (see the catch below), but the
+  // failure still has to be visible to something -- close() surfaces it so a
+  // lost final flush is distinguishable from a clean shutdown.
+  let lastWriteError = null;
 
   async function write() {
     if (!dirty) return;
@@ -64,10 +69,12 @@ export async function createCreditStore({
       // place, as LU2 did, truncates everything if the process dies mid-write.
       await writeFile(tmp, snapshot, 'utf8');
       await rename(tmp, path);
+      lastWriteError = null;
     } catch (err) {
       // Never take the bot down for a failed write. Stay dirty and retry on
       // the next flush; the in-memory ledger is still correct.
       dirty = true;
+      lastWriteError = err;
       console.error(`Failed to write ${path}:`, err);
     }
   }
@@ -127,6 +134,14 @@ export async function createCreditStore({
 
     async close() {
       await this.flush();
+      // flush()/write() swallow the error to stay non-fatal while running;
+      // close() is the explicit "stop now" boundary, so it is the one place
+      // an unwritten final flush must be signalled rather than absorbed.
+      if (lastWriteError) {
+        throw new Error(
+          `Could not flush the credit ledger to ${path} before closing: ${lastWriteError.message}`,
+        );
+      }
     },
   };
 }
