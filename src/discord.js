@@ -35,6 +35,14 @@ export function toEntry(view, { botId }) {
     // task) keep working without adding these two fields to every one.
     authorCanManageNicknames: view.authorCanManageNicknames ?? false,
     inGuild: view.inGuild ?? false,
+    // The rendered text above loses the ids, which "lu credits @someone" needs
+    // to know who was meant. Carried separately rather than parsed back out of
+    // the text: a display name is not a key and two members can share one.
+    mentions: view.mentionedUsers.map((u) => ({ id: u.id, name: u.displayName })),
+    // Which of those mentions is Lu. Carried on the entry rather than threaded
+    // through createConversation, which every other consumer would have had to
+    // accept and ignore.
+    luId: botId,
   };
 }
 
