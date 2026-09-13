@@ -8,7 +8,7 @@ import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNi
 import { awardForMessage } from './credits/earn.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
-  formatCredits, formatLeaderboard, formatLevelUp,
+  formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
 } from './credits/commands.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
@@ -166,6 +166,19 @@ export function createConversation({
       let result;
       try {
         const { prior } = split(channelId, entry);
+        // Composed rather than a single expression: this used to be nickname-only,
+        // and the next feature that wants a fragment should not have to add a
+        // third parameter. Stays undefined when there is nothing to add --
+        // buildMessages branches on it and an ordinary reply's system message
+        // must stay byte-identical to what it was before credits existed.
+        const instructions = [];
+        if (asksRename && !asksReset) instructions.push(NICKNAME_INSTRUCTION);
+        if (credits && config.credits?.enabled) {
+          instructions.push(creditsInstruction({
+            name: entry.name,
+            credits: credits.get(entry.authorId).credits,
+          }));
+        }
         result = await withTimeout(async (signal) => {
           const chunks = await chooseChunks(entry.text);
           return respondWithReason({
@@ -176,7 +189,7 @@ export function createConversation({
             llm,
             config,
             signal,
-            extraInstruction: asksRename && !asksReset ? NICKNAME_INSTRUCTION : undefined,
+            extraInstruction: instructions.length > 0 ? instructions.join('\n\n') : undefined,
           });
         }, config.reply.timeoutSeconds * 1000, { setTimeoutImpl, clearTimeoutImpl });
       } catch (err) {

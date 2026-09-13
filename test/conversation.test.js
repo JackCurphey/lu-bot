@@ -678,3 +678,33 @@ test('with no store and no credits config, nothing changes', async () => {
   await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1' }), s.io);
   // No throw is the assertion.
 });
+
+// --- Composing extra instructions ---
+// buildMessages branches on extraInstruction being undefined, and an ordinary
+// reply's system message must stay byte-identical to what it was before this
+// feature. An empty string is not undefined.
+
+test('an ordinary reply still passes no extra instruction', async () => {
+  const s = setup({});
+  await say(s, msg({ text: 'lu what do you think', mentionsLu: true }));
+  assert.equal(s.calls.respond[0].extraInstruction, undefined);
+});
+
+test('with a store, the reply carries the speaker\'s balance', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await say(s, msg({ text: 'lu what do you think', authorId: 'u1', name: 'Bob', mentionsLu: true }));
+  assert.match(s.calls.respond[0].extraInstruction, /1,2\d\d imperial credits/);
+});
+
+test('a rename request and the balance are both carried', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await say(s, msg({
+    text: 'lu change your name to Stone', authorId: 'u1', name: 'Bob',
+    mentionsLu: true, inGuild: true, authorCanManageNicknames: true,
+  }));
+  const instruction = s.calls.respond[0].extraInstruction;
+  assert.match(instruction, /imperial credits/);
+  assert.match(instruction, /NICKNAME/);
+});
