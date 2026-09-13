@@ -7,7 +7,7 @@ import { truncateForDiscord } from './discord.js';
 import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
 import { awardForMessage } from './credits/earn.js';
 import {
-  CREDITS_RE, LEADERBOARD_RE, resolveTarget,
+  LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp,
 } from './credits/commands.js';
 
@@ -319,7 +319,7 @@ export function createConversation({
         await safeSend(state, formatLeaderboard(credits.top(10)));
         return;
       }
-      if (CREDITS_RE.test(entry.text)) {
+      if (isCreditsCommand(entry)) {
         const target = resolveTarget(entry, entry.luId);
         const who = target ?? { id: entry.authorId, name: entry.name };
         await safeSend(state, formatCredits({ name: who.name, credits: credits.get(who.id).credits }));

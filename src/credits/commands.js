@@ -1,11 +1,27 @@
 import { progress } from './levels.js';
 
-// Anchored as EXPLAIN_RE is (src/decisions.js:6): only the command itself,
-// optionally naming someone, so "lu credits are a stupid idea" stays
-// conversation and reaches the model. The trailing "@..." is loose because a
-// rendered display name can contain spaces -- "@COMRADE STONE" is one member.
-export const CREDITS_RE = /^\s*lu[\s,:]+credits\b\s*(?:@.*?)?\s*[!.?]*\s*$/i;
+// Isolates the "lu credits" prefix and captures whatever follows. This alone
+// cannot gate the command: a rendered display name can contain spaces
+// ("@COMRADE STONE" is one member), so no regex can tell a two-word name from
+// a two-word sentence following it. isCreditsCommand is the real gate -- it
+// checks the captured tail against the names actually mentioned on the entry.
+export const CREDITS_RE = /^\s*lu[\s,:]+credits\b(.*)$/i;
 export const LEADERBOARD_RE = /^\s*lu[\s,:]+leaderboard\b\s*[!.?]*\s*$/i;
+
+// Anchored as EXPLAIN_RE is (src/decisions.js:6): only the command itself,
+// optionally naming someone actually mentioned, so "lu credits are a stupid
+// idea" and "lu credits @Bob what a stupid idea" both stay conversation and
+// reach the model.
+export function isCreditsCommand(entry) {
+  const match = CREDITS_RE.exec(entry.text);
+  if (!match) return false;
+  const tail = match[1].trim().replace(/[!.?]+$/, '').trim();
+  if (tail === '') return true;
+  const named = /^@(.+)$/.exec(tail);
+  if (!named) return false;
+  const name = named[1].trim().toLowerCase();
+  return entry.mentions.some((m) => m.name.toLowerCase() === name);
+}
 
 export const EMPTY_LEADERBOARD = 'the ledger is empty. nobody has earned anything yet.';
 

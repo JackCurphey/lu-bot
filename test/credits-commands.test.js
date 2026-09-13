@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CREDITS_RE, LEADERBOARD_RE, resolveTarget,
+  CREDITS_RE, LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
   EMPTY_LEADERBOARD,
 } from '../src/credits/commands.js';
@@ -9,6 +9,9 @@ import {
 // --- Anchoring ---
 // Matched as "lu explain" is: only the command itself, so a message that
 // merely talks about credits stays conversation and reaches the model.
+// CREDITS_RE only isolates the "lu credits" prefix and captures the rest --
+// isCreditsCommand is the real gate, since a display name can contain spaces
+// and no regex can tell a two-word name from a two-word sentence.
 
 test('the credits command matches its forms', () => {
   assert.ok(CREDITS_RE.test('lu credits'));
@@ -19,10 +22,46 @@ test('the credits command matches its forms', () => {
   assert.ok(CREDITS_RE.test('lu credits @COMRADE STONE'));
 });
 
-test('talking about credits is conversation, not a command', () => {
-  assert.ok(!CREDITS_RE.test('lu credits are a stupid idea'));
-  assert.ok(!CREDITS_RE.test('how many credits do i have'));
-  assert.ok(!CREDITS_RE.test('lu, what are imperial credits'));
+test('isCreditsCommand: bare forms are commands', () => {
+  assert.ok(isCreditsCommand({ text: 'lu credits', mentions: [] }));
+  assert.ok(isCreditsCommand({ text: 'Lu, credits', mentions: [] }));
+  assert.ok(isCreditsCommand({ text: 'lu credits?', mentions: [] }));
+});
+
+test('isCreditsCommand: naming a mentioned member is a command', () => {
+  const mentions = [{ id: '1', name: 'Bob' }];
+  assert.ok(isCreditsCommand({ text: 'lu credits @Bob', mentions }));
+  assert.ok(isCreditsCommand({ text: 'lu credits @Bob.', mentions }));
+});
+
+test('isCreditsCommand: a multi-word display name is still a command', () => {
+  const mentions = [{ id: '1', name: 'COMRADE STONE' }];
+  assert.ok(isCreditsCommand({ text: 'lu credits @COMRADE STONE', mentions }));
+});
+
+test('isCreditsCommand: trailing prose after a real mention is conversation', () => {
+  const mentions = [{ id: '1', name: 'Bob' }];
+  assert.ok(!isCreditsCommand({ text: 'lu credits @Bob thanks', mentions }));
+  assert.ok(!isCreditsCommand({ text: 'lu credits @Bob what a stupid idea', mentions }));
+});
+
+test('isCreditsCommand: talking about credits is conversation, not a command', () => {
+  assert.ok(!isCreditsCommand({ text: 'lu credits are a stupid idea', mentions: [] }));
+  assert.ok(!isCreditsCommand({ text: 'how many credits do i have', mentions: [] }));
+  assert.ok(!isCreditsCommand({ text: 'lu, what are imperial credits', mentions: [] }));
+});
+
+test('isCreditsCommand: near-miss prefixes are not commands', () => {
+  assert.ok(!isCreditsCommand({ text: 'lu credit', mentions: [] }));
+  assert.ok(!isCreditsCommand({ text: 'lucredits', mentions: [] }));
+  assert.ok(!isCreditsCommand({ text: 'lu', mentions: [] }));
+});
+
+// An "@Bob" tail with nobody actually mentioned is not distinguishable from
+// prose that happens to start with @ -- without a real mention to check
+// against, it must not be treated as a command.
+test('isCreditsCommand: an @-tail with no matching mention is not a command', () => {
+  assert.ok(!isCreditsCommand({ text: 'lu credits @Bob', mentions: [] }));
 });
 
 test('the leaderboard command matches only itself', () => {
