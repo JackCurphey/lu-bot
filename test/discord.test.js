@@ -12,7 +12,62 @@ import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, D
 const opts = { botId: 'bot', allowedChannels: ['chan'] };
 const view = (over = {}) => ({
   id: 'm1', channelId: 'chan', author: { id: 'human', bot: false, displayName: 'sam' },
-  content: 'hello', mentionedUsers: [], repliedUserId: null, createdTimestamp: 1000, ...over,
+  content: 'hello', mentionedUsers: [], repliedUserId: null, createdTimestamp: 1000,
+  guildId: 'g1', ...over,
+});
+
+// --- Server allowlist ---
+// Listing every channel by id goes stale the moment someone adds a channel.
+// A server allowlist says "everywhere in these servers", and the denylist is
+// how a mod or private channel is kept out. The two mechanisms union: an
+// explicitly allowed channel is still observed even outside an allowed server,
+// so the old configuration keeps working unchanged.
+
+const guildOpts = { botId: 'bot', allowedChannels: [], allowedGuilds: ['g1'], deniedChannels: [] };
+
+test('every channel in an allowed server is observed', () => {
+  assert.equal(shouldObserve(view({ channelId: 'anything', guildId: 'g1' }), guildOpts), true);
+  assert.equal(shouldObserve(view({ channelId: 'another', guildId: 'g1' }), guildOpts), true);
+});
+
+test('a channel in a server that is not allowed is ignored', () => {
+  assert.equal(shouldObserve(view({ channelId: 'anything', guildId: 'g2' }), guildOpts), false);
+});
+
+test('a denied channel is ignored even inside an allowed server', () => {
+  const opts2 = { ...guildOpts, deniedChannels: ['mods'] };
+  assert.equal(shouldObserve(view({ channelId: 'mods', guildId: 'g1' }), opts2), false);
+  assert.equal(shouldObserve(view({ channelId: 'general', guildId: 'g1' }), opts2), true);
+});
+
+test('the channel allowlist still works on its own, unchanged', () => {
+  const opts2 = { botId: 'bot', allowedChannels: ['chan'], allowedGuilds: [], deniedChannels: [] };
+  assert.equal(shouldObserve(view({ channelId: 'chan', guildId: 'g9' }), opts2), true);
+  assert.equal(shouldObserve(view({ channelId: 'other', guildId: 'g9' }), opts2), false);
+});
+
+// An explicitly named channel is a deliberate act; a server allowlist is a
+// broad one. The narrow statement wins, so a channel can be opted in without
+// opening its whole server.
+test('an explicitly allowed channel is observed even outside an allowed server', () => {
+  const opts2 = { botId: 'bot', allowedChannels: ['chan'], allowedGuilds: ['g1'], deniedChannels: [] };
+  assert.equal(shouldObserve(view({ channelId: 'chan', guildId: 'elsewhere' }), opts2), true);
+});
+
+// A direct message has no guild. It must not fall through the server check.
+test('a message with no server is never observed by the server rule', () => {
+  assert.equal(shouldObserve(view({ channelId: 'dm', guildId: null }), guildOpts), false);
+});
+
+test('Lu still never observes himself, whatever the server rules say', () => {
+  assert.equal(
+    shouldObserve(view({ channelId: 'x', guildId: 'g1', author: { id: 'bot', bot: true, displayName: 'Lu' } }), guildOpts),
+    false,
+  );
+});
+
+test('the entry carries the server id', () => {
+  assert.equal(toEntry(view({ guildId: 'g1' }), { botId: 'bot' }).guildId, 'g1');
 });
 
 test('observes a human message in an allowed channel, mention or not', () => {
@@ -38,7 +93,7 @@ test('toEntry maps the view to an entry', () => {
     isBot: false, isLu: false, mentionsLu: false, mentionsOthers: false,
     repliesToLu: false, repliesToOther: true, at: 1000, text: 'hello',
     authorCanManageNicknames: false, inGuild: false,
-    mentions: [], luId: 'bot',
+    mentions: [], luId: 'bot', guildId: 'g1',
   });
 });
 

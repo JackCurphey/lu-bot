@@ -2,9 +2,18 @@ import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.
 
 // Every message in an allowed channel is passed on, so Lu can follow the
 // conversation. Whether he answers is decided later, in attention.js.
-export function shouldObserve(view, { botId, allowedChannels }) {
+// Two ways in, unioned. A channel named in allowedChannels is always observed
+// -- naming a channel is a deliberate act, so it wins even outside an allowed
+// server. Otherwise the server rule applies: everywhere in an allowed server
+// except the channels named in deniedChannels. Listing every channel by id
+// went stale the moment someone added one, which is why the server rule exists.
+export function shouldObserve(view, { botId, allowedChannels, allowedGuilds = [], deniedChannels = [] }) {
   if (view.author.id === botId) return false;
-  return allowedChannels.includes(view.channelId);
+  if (allowedChannels.includes(view.channelId)) return true;
+  // A direct message has no guild, so guildId is null and matches no entry in
+  // allowedGuilds -- no explicit guard needed, and one was removed here after a
+  // mutation check showed it could be deleted without failing any test.
+  return allowedGuilds.includes(view.guildId) && !deniedChannels.includes(view.channelId);
 }
 
 export const LU_NAME = 'Lu';
@@ -35,6 +44,8 @@ export function toEntry(view, { botId }) {
     // task) keep working without adding these two fields to every one.
     authorCanManageNicknames: view.authorCanManageNicknames ?? false,
     inGuild: view.inGuild ?? false,
+    // Which server this came from. Null in a direct message.
+    guildId: view.guildId ?? null,
     // The rendered text above loses the ids, which "lu credits @someone" needs
     // to know who was meant. Carried separately rather than parsed back out of
     // the text: a display name is not a key and two members can share one.
@@ -143,6 +154,7 @@ function viewOf(message) {
     createdTimestamp: message.createdTimestamp,
     authorCanManageNicknames: message.member?.permissions?.has(PermissionsBitField.Flags.ManageNicknames) ?? false,
     inGuild: Boolean(message.guild),
+    guildId: message.guild?.id ?? null,
   };
 }
 
@@ -166,7 +178,12 @@ export async function startBot({ config, onMessage }) {
 
   client.on(Events.MessageCreate, async (message) => {
     const view = viewOf(message);
-    if (!shouldObserve(view, { botId: client.user.id, allowedChannels: config.discord.allowedChannels })) {
+    if (!shouldObserve(view, {
+      botId: client.user.id,
+      allowedChannels: config.discord.allowedChannels,
+      allowedGuilds: config.discord.allowedGuilds,
+      deniedChannels: config.discord.deniedChannels,
+    })) {
       return;
     }
     try {
