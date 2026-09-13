@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Target host:** Mac mini A1993 / Macmini8,1, Intel i3-8100B, 4 cores, 16GB RAM, macOS 15.7.9. Reachable as `ssh mini` (`jackcurphey@<mini-ip>`, key `~/.ssh/<key>`).
+- **Target host:** Mac mini A1993 / Macmini8,1, Intel i3-8100B, 4 cores, 16GB RAM, macOS 15.7.9. Reachable as `ssh mini` (`<user>@<mini-ip>`, key `~/.ssh/<key>`).
 - **Node version:** exactly **v26.8.1**, `darwin-x64`. SHA-256 `fe9c6dbf9c8e1b4443803d75e2a20366e420dae650c747dbb116b22975751baf`.
 - **Models:** `qwen3:4b-instruct` for BOTH `LLM_CHAT_MODEL` and `LLM_JUDGE_MODEL`; `nomic-embed-text` for `LLM_EMBED_MODEL`. Never two different chat/judge models — one resident copy is a memory requirement, not a preference.
 - **Ollama binds 127.0.0.1 only.** The model server is never exposed to the LAN.

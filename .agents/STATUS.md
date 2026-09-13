@@ -193,19 +193,25 @@ it on return with `pmset -g log | grep -E "Sleep|Wake"`.
   bot and no SSH until someone types the password at the machine. Turn it off, or
   accept manual unlock. Task 6's reboot test will fail until this is decided.
 
-## Accepted known risk
+## Resolved: the bot token exposure
 
-**The real Discord bot token is still in git history.** `.env.example` held the
-live token, guild ID and channel IDs from `568d300` until `d8ec09d` replaced them
-with placeholders. The user chose to scrub without rotating. The old values are
-still recoverable with `git show <old-sha>:.env.example` — **and that history is
-now on GitHub** (private repo, pushed 2026-09-11 at the user's request). It becomes
-a real exposure the moment the repo is shared, made public, or GitHub access leaks. Rotating the token in the
-Discord developer portal is the only step that makes those copies useless.
+**Closed 2026-09-13.** The real Discord bot token was committed to
+`.env.example` between `568d300` and `d8ec09d` and was pushed to GitHub. It has
+now been **rotated** in the Discord developer portal, which is what actually
+made every copy of the old value worthless — rewriting history alone would not
+have. Git history was then rewritten to purge the dead string, and the GitHub
+repository was deleted and recreated so no pre-rewrite object remains reachable
+by SHA. Home-network addresses, the SSH key filename and the real server and
+channel IDs were replaced with placeholders in the same pass, before the
+repository was made public.
+
+The lesson worth keeping: a credential that has left the machine is
+compromised, and scrubbing it from history is tidying, not remediation.
+Rotation is the remediation.
 
 ## Environment notes
 
-- Mini: `ssh mini` → `jackcurphey@<mini-ip>`, key `~/.ssh/<key>`. **LAN only.**
+- Mini: `ssh mini` → `<user>@<mini-ip>`, key `~/.ssh/<key>`. **LAN only.**
 - Mini has **no working git** (Apple stub, no Xcode CLT). Deploy is rsync from the
   MacBook, excluding `.git`, `node_modules`, `.env`, `.superpowers`; then `npm ci`
   on the mini. The running commit is in `~/lu-bot/DEPLOYED_COMMIT` there.
