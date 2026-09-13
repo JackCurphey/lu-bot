@@ -45,10 +45,12 @@ export function loadConfig(env) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
-  const channels = (env.DISCORD_ALLOWED_CHANNELS ?? '')
-    .split(',')
-    .map((c) => c.trim())
-    .filter(Boolean);
+  const ids = (raw) => (raw ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+  const channels = ids(env.DISCORD_ALLOWED_CHANNELS);
+  // Everywhere in these servers, minus deniedChannels. Added because listing
+  // every channel by id goes stale as soon as a channel is created.
+  const allowedGuilds = ids(env.DISCORD_ALLOWED_GUILDS);
+  const deniedChannels = ids(env.DISCORD_DENIED_CHANNELS);
 
   const history = {
     limit: num(env, 'HISTORY_LIMIT', 20),
@@ -94,6 +96,8 @@ export function loadConfig(env) {
     discord: {
       token: env.DISCORD_BOT_TOKEN,
       guildId: env.DISCORD_GUILD_ID,
+      allowedGuilds,
+      deniedChannels,
       allowedChannels: channels,
     },
     llm: loadLlmConfig(env),
@@ -138,10 +142,22 @@ export function loadConfig(env) {
 // online, and ignores everyone, with nothing anywhere explaining why.
 export function startupWarnings(config) {
   const warnings = [];
-  if (config.discord.allowedChannels.length === 0) {
+  // Defaulted rather than assumed: some callers build a config object by hand
+  // rather than through loadConfig, and a missing list must read as empty.
+  const allowedChannels = config.discord.allowedChannels ?? [];
+  const allowedGuilds = config.discord.allowedGuilds ?? [];
+  const deniedChannels = config.discord.deniedChannels ?? [];
+  if (allowedChannels.length === 0 && allowedGuilds.length === 0) {
     warnings.push(
-      'DISCORD_ALLOWED_CHANNELS is empty: the bot will respond to nothing. ' +
-      'Set it to a comma-separated list of channel IDs it may read and speak in.',
+      'DISCORD_ALLOWED_CHANNELS and DISCORD_ALLOWED_GUILDS are both empty: the bot ' +
+      'will respond to nothing. Set one of them -- channel IDs for specific channels, ' +
+      'or server IDs to cover every channel in those servers.',
+    );
+  }
+  if (deniedChannels.length > 0 && allowedGuilds.length === 0) {
+    warnings.push(
+      'DISCORD_DENIED_CHANNELS is set but DISCORD_ALLOWED_GUILDS is empty, so it excludes ' +
+      'nothing: the denylist only narrows the server rule.',
     );
   }
   return warnings;

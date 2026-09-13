@@ -3,8 +3,10 @@
 > **2026-09-13: Imperial Credits is built and reviewed on the MacBook only —
 > not deployed, not started, not live-checked.**
 >
-> Branch `spec/imperial-credits`, off `feat/mini-deployment`, tip `8ad5a10`.
-> Nothing pushed. Members now earn 15-25 Imperial Credits per eligible
+> Branch `spec/imperial-credits`, off `feat/mini-deployment`. **Pushed and in
+> sync with `origin/spec/imperial-credits` at `1dd7539`** (verified 2026-09-13;
+> the tip was `8ad5a10` when this entry was written).
+> Members now earn 15-25 Imperial Credits per eligible
 > message (not a bot, in a watched channel, at least 3 characters) on a
 > 30-second per-user cooldown. Level derives from credits by MEE6's
 > `5n² + 50n + 100` and is never stored. Commands: `lu credits`, `lu credits
@@ -70,8 +72,8 @@
 > replies, and self-renaming (Task 15/16) are **merged into
 > `feat/mini-deployment`** at merge commit `f4f5686` (2026-09-12). The
 > `feat/old-lu-stage1` branch was deleted after the merge (its tip was
-> `df36838`). **Not pushed to GitHub** — `feat/mini-deployment` is 29 commits
-> ahead of `origin/feat/mini-deployment`.
+> `df36838`). **Pushed** (2026-09-13): `feat/mini-deployment` is in sync with
+> `origin/feat/mini-deployment` at `fe181ed`, 0 ahead and 0 behind.
 >
 > **Nicknames:** Lu renames himself when asked, but only for members with
 > Discord's Manage Nicknames permission; a reset ("go back to your normal
@@ -127,9 +129,13 @@
 >
 > The mini-deployment status below is unchanged except where corrected inline.
 
-**Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment`, not
-merged. **Pushed to private GitHub repo https://github.com/JackCurphey/lu-bot**
-(all four branches; default branch `feat/mini-deployment`).
+**Last session:** 2026-09-10 → 2026-09-11. Branch `feat/mini-deployment` —
+**stage 1 is now merged into it** (`f4f5686`, 2026-09-12) and it is pushed and
+in sync with origin at `fe181ed`. **Private GitHub repo
+https://github.com/JackCurphey/lu-bot**; default branch `feat/mini-deployment`.
+Six branches now exist on origin (verified 2026-09-13): `feat/foundation`,
+`feat/mini-deployment`, `spec/imperial-credits`, `spec/initial-design`,
+`spec/mini-deployment`, `spec/web-search-exploration`.
 
 ## Where it stands
 

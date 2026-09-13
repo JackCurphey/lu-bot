@@ -252,3 +252,38 @@ test('a negative flush interval is rejected', () => {
 test('a negative cooldown is rejected', () => {
   assert.throws(() => loadConfig({ ...valid, CREDITS_COOLDOWN_SECONDS: '-1' }), /CREDITS_COOLDOWN_SECONDS/);
 });
+
+// --- Server allowlist ---
+// A channel allowlist goes stale the moment someone creates a channel, so a
+// server rule was added alongside it. The two union; the denylist only ever
+// narrows the server rule, never the explicit channel list.
+
+test('server allowlist and channel denylist parse as id lists', () => {
+  const cfg = loadConfig({ ...valid, DISCORD_ALLOWED_GUILDS: ' g1 , g2 ', DISCORD_DENIED_CHANNELS: 'mods' });
+  assert.deepEqual(cfg.discord.allowedGuilds, ['g1', 'g2']);
+  assert.deepEqual(cfg.discord.deniedChannels, ['mods']);
+});
+
+test('both lists default to empty', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.discord.allowedGuilds, []);
+  assert.deepEqual(cfg.discord.deniedChannels, []);
+});
+
+test('a server allowlist alone is enough to silence the nothing-configured warning', () => {
+  const cfg = loadConfig({ ...valid, DISCORD_ALLOWED_CHANNELS: '', DISCORD_ALLOWED_GUILDS: 'g1' });
+  assert.deepEqual(startupWarnings(cfg), []);
+});
+
+test('warns when neither channels nor servers are configured', () => {
+  const cfg = loadConfig({ ...valid, DISCORD_ALLOWED_CHANNELS: '' });
+  assert.equal(startupWarnings(cfg).length, 1);
+  assert.match(startupWarnings(cfg)[0], /DISCORD_ALLOWED_GUILDS/);
+});
+
+// A denylist with no server rule to narrow excludes nothing, which looks like
+// it is working and is not.
+test('warns when a denylist is set with no server allowlist', () => {
+  const cfg = loadConfig({ ...valid, DISCORD_DENIED_CHANNELS: 'mods' });
+  assert.ok(startupWarnings(cfg).some((w) => /excludes nothing/.test(w)));
+});
