@@ -57,6 +57,18 @@ test('isCreditsCommand: near-miss prefixes are not commands', () => {
   assert.ok(!isCreditsCommand({ text: 'lu', mentions: [] }));
 });
 
+// F6: every other field added to toEntry in this branch is defensively
+// defaulted with a comment saying why; `mentions` was not. A future entry
+// producer that omits it must not turn this into a caught-and-dropped
+// TypeError.
+test('isCreditsCommand: an entry with no mentions field is still a valid bare command', () => {
+  assert.ok(isCreditsCommand({ text: 'lu credits' }));
+});
+
+test('isCreditsCommand: an entry with no mentions field naming someone is not a command', () => {
+  assert.ok(!isCreditsCommand({ text: 'lu credits @Bob' }));
+});
+
 // An "@Bob" tail with nobody actually mentioned is not distinguishable from
 // prose that happens to start with @ -- without a real mention to check
 // against, it must not be treated as a command.

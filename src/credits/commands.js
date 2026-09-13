@@ -20,7 +20,10 @@ export function isCreditsCommand(entry) {
   const named = /^@(.+)$/.exec(tail);
   if (!named) return false;
   const name = named[1].trim().toLowerCase();
-  return entry.mentions.some((m) => m.name.toLowerCase() === name);
+  // Defaulted like every other field added to toEntry in this branch: a
+  // future entry producer that omits `mentions` must not turn a credits
+  // command into a caught-and-dropped TypeError (F6).
+  return (entry.mentions ?? []).some((m) => m.name.toLowerCase() === name);
 }
 
 export const EMPTY_LEADERBOARD = 'the ledger is empty. nobody has earned anything yet.';
