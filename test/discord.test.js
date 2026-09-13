@@ -38,6 +38,7 @@ test('toEntry maps the view to an entry', () => {
     isBot: false, isLu: false, mentionsLu: false, mentionsOthers: false,
     repliesToLu: false, repliesToOther: true, at: 1000, text: 'hello',
     authorCanManageNicknames: false, inGuild: false,
+    mentions: [], luId: 'bot',
   });
 });
 
@@ -232,4 +233,60 @@ test('a failing sendTyping does not reject into the caller', async () => {
 
   handle.stop();
   assert.equal(t.active(), 0);
+});
+
+// --- Mentioned users on the entry ---
+// toEntry renders mention tags to "@DisplayName" so a bare "@Lu" message is
+// never empty (the model server rejects empty content with a 400). That
+// rendering destroys the IDs, which "lu credits @someone" needs to know who
+// was meant. Both are carried: the rendered text for the model, the ids for
+// code.
+
+test('mentioned users are carried on the entry with their ids', () => {
+  const entry = toEntry(view({
+    content: 'lu credits <@42>',
+    mentionedUsers: [{ id: '42', displayName: 'Bob' }],
+  }), { botId: 'bot' });
+  assert.deepEqual(entry.mentions, [{ id: '42', name: 'Bob' }]);
+  assert.equal(entry.text, 'lu credits @Bob');
+});
+
+test('a message mentioning nobody carries an empty list', () => {
+  assert.deepEqual(toEntry(view({ content: 'hello' }), { botId: 'bot' }).mentions, []);
+});
+
+test('Lu is listed among the mentions like anyone else', () => {
+  const entry = toEntry(view({
+    content: '<@bot> hello',
+    mentionedUsers: [{ id: 'bot', displayName: 'Lu' }],
+  }), { botId: 'bot' });
+  assert.deepEqual(entry.mentions, [{ id: 'bot', name: 'Lu' }]);
+});
+
+// Every test above uses a single-element mentionedUsers array, so an
+// implementation that reversed the array, sorted it, or filtered Lu out
+// would still pass all of them. This pins both properties at once with a
+// three-entry array, Lu in the middle, asserted with one deepEqual over the
+// whole list.
+test('mentions preserve Discord order and keep Lu in the middle', () => {
+  const entry = toEntry(view({
+    content: '<@1> <@bot> <@2> hello',
+    mentionedUsers: [
+      { id: '1', displayName: 'Alice' },
+      { id: 'bot', displayName: 'Lu' },
+      { id: '2', displayName: 'Carl' },
+    ],
+  }), { botId: 'bot' });
+  assert.deepEqual(entry.mentions, [
+    { id: '1', name: 'Alice' },
+    { id: 'bot', name: 'Lu' },
+    { id: '2', name: 'Carl' },
+  ]);
+});
+
+// Carried so downstream code can tell which mention is Lu. The alternative
+// was threading botId through createConversation, which every other consumer
+// would have had to accept and ignore.
+test('the entry knows Lu\'s own id', () => {
+  assert.equal(toEntry(view({ content: 'hello' }), { botId: 'bot' }).luId, 'bot');
 });

@@ -5,6 +5,7 @@ import { createHistory } from '../src/history.js';
 import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
 import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 import { respondWithReason } from '../src/responder.js';
+import { CREDITS_DISABLED } from '../src/credits/commands.js';
 
 const config = {
   trigger: {
@@ -42,12 +43,13 @@ function msg(over = {}) {
   return {
     messageId: `m${seq}`, channelId: 'chan', authorId: 'sam', name: 'sam', isBot: false, isLu: false,
     mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
-    at: T0, text: 'hello', authorCanManageNicknames: true, inGuild: true, ...over,
+    at: T0, text: 'hello', authorCanManageNicknames: true, inGuild: true,
+    mentions: [], luId: 'lu', ...over,
   };
 }
 const luSaid = (text = 'the state is a tool') => msg({ authorId: 'lu', name: 'Lu', isLu: true, isBot: true, text });
 
-function setup({ applyNickname, ...over } = {}) {
+function setup({ applyNickname, send, ...over } = {}) {
   const timers = fakeTimers();
   const history = createHistory({ limit: 20, trimTo: 10 });
   const decisions = createDecisionLog();
@@ -55,7 +57,14 @@ function setup({ applyNickname, ...over } = {}) {
   const sent = [];
   let typingStarts = 0; let typingStops = 0;
   const io = {
-    async send(text) { sent.push(text); return `sent${sent.length}`; },
+    // `send`, when given, lets a test control when a particular send resolves
+    // (e.g. a deferred promise) so it can drive interleaving between two
+    // concurrent handleMessage calls -- gateway events are not serialised.
+    async send(text) {
+      if (send) return send(text, sent);
+      sent.push(text);
+      return `sent${sent.length}`;
+    },
     startTyping() { typingStarts++; return { stop() { typingStops++; } }; },
     async applyNickname(name) {
       calls.applyNickname.push(name);
@@ -569,4 +578,240 @@ test('a judge YES that fails to reply still posts the headache', async () => {
   s.timers.fire(PAUSE_MS);
   await s.conversation.idle('chan');
   assert.deepEqual(s.sent, [HEADACHE]);
+});
+
+// --- Imperial Credits ---
+// Awarding sits outside the reply pipeline, which is the structural lesson
+// from LU2 (bot.py:347-348): credit accrues from taking part, not from
+// getting Lu's attention. Commands early-return before awarding, so asking
+// for your balance cannot pay you.
+
+const creditsConfig = {
+  enabled: true, min: 15, max: 25, cooldownSeconds: 30, minChars: 3,
+  announceLevelUp: true, flushMs: 2000,
+};
+
+function creditsStore(seed = {}) {
+  const users = new Map(Object.entries(seed));
+  const empty = () => ({ credits: 0, name: '', lastAwardAt: 0, messages: 0, voiceSeconds: 0 });
+  return {
+    get: (id) => ({ ...(users.get(id) ?? empty()) }),
+    award(id, { credits, name, at }) {
+      const rec = users.get(id) ?? empty();
+      rec.credits += credits;
+      rec.lastAwardAt = at;
+      rec.messages += 1;
+      if (name) rec.name = name;
+      users.set(id, rec);
+      return rec.credits;
+    },
+    top: (k) => [...users.entries()]
+      .map(([userId, r]) => ({ userId, name: r.name, credits: r.credits }))
+      .sort((a, b) => b.credits - a.credits || a.userId.localeCompare(b.userId))
+      .slice(0, k),
+  };
+}
+
+test('an ordinary message earns credits', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1' }), s.io);
+  assert.equal(store.get('u1').credits, 25);
+});
+
+test('asking for your balance earns nothing', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1' }), s.io);
+  assert.equal(store.get('u1').credits, 0);
+});
+
+test('asking for your balance replies with it and stops', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.equal(s.sent.length, 1);
+  assert.match(s.sent[0], /1,200/);
+  assert.match(s.sent[0], /level 5/);
+});
+
+test('a mentioned member reads as that member, not the asker', async () => {
+  const store = creditsStore({ u2: { credits: 300, name: 'Ann', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({
+    text: 'lu credits @Ann', authorId: 'u1', name: 'Bob',
+    mentions: [{ id: 'u2', name: 'Ann' }],
+  }), s.io);
+  assert.match(s.sent[0], /Ann/);
+  assert.match(s.sent[0], /300/);
+});
+
+test('the leaderboard replies and stops', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu leaderboard', authorId: 'u1' }), s.io);
+  assert.equal(s.sent.length, 1);
+  assert.match(s.sent[0], /1\. Bob/);
+});
+
+test('a bot message earns nothing', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', isBot: true }), s.io);
+  assert.equal(store.get('u1').credits, 0);
+});
+
+test('crossing a level posts a line in the channel', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.ok(s.sent.some((t) => /level 1/.test(t)));
+});
+
+test('level-up announcements can be turned off', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({
+    credits: store,
+    config: { ...config, credits: { ...creditsConfig, announceLevelUp: false } },
+  });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.ok(!s.sent.some((t) => /reaches level/.test(t)));
+  assert.equal(store.get('u1').credits, 115);
+});
+
+// --- F7: a disabled ledger must not let the model invent a balance ---
+// With credits configured but switched off, "lu credits" is no longer
+// recognised as a command and would otherwise reach the model with no
+// creditsInstruction to anchor it -- free to fabricate a number. The spec
+// forbids fabricated user-facing values.
+
+test('F7: asking for your balance with the ledger disabled gets the fixed line, not the model', async () => {
+  const s = setup({ credits: null, config: { ...config, credits: { ...creditsConfig, enabled: false } } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1' }), s.io);
+  assert.deepEqual(s.sent, [CREDITS_DISABLED]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('F7: the leaderboard command with the ledger disabled gets the fixed line, not the model', async () => {
+  const s = setup({ credits: null, config: { ...config, credits: { ...creditsConfig, enabled: false } } });
+  await s.conversation.handleMessage(msg({ text: 'lu leaderboard', authorId: 'u1' }), s.io);
+  assert.deepEqual(s.sent, [CREDITS_DISABLED]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('F7: with no credits config at all, the commands are unaffected', async () => {
+  const s = setup({});
+  await say(s, msg({ text: 'lu credits', mentionsLu: true, authorId: 'u1' }));
+  assert.ok(!s.sent.includes(CREDITS_DISABLED));
+});
+
+// Roughly 390 tests predate this feature and build config objects with no
+// credits section. None of them may break.
+test('with no store and no credits config, nothing changes', async () => {
+  const s = setup({});
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1' }), s.io);
+  // No throw is the assertion.
+});
+
+// --- Composing extra instructions ---
+// buildMessages branches on extraInstruction being undefined, and an ordinary
+// reply's system message must stay byte-identical to what it was before this
+// feature. An empty string is not undefined.
+
+test('an ordinary reply still passes no extra instruction', async () => {
+  const s = setup({});
+  await say(s, msg({ text: 'lu what do you think', mentionsLu: true }));
+  assert.equal(s.calls.respond[0].extraInstruction, undefined);
+});
+
+test('with a store, the reply carries the speaker\'s balance', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await say(s, msg({ text: 'lu what do you think', authorId: 'u1', name: 'Bob', mentionsLu: true }));
+  assert.match(s.calls.respond[0].extraInstruction, /1,2\d\d imperial credits/);
+});
+
+test('a rename request and the balance are both carried', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await say(s, msg({
+    text: 'lu change your name to Stone', authorId: 'u1', name: 'Bob',
+    mentionsLu: true, inGuild: true, authorCanManageNicknames: true,
+  }));
+  const instruction = s.calls.respond[0].extraInstruction;
+  assert.match(instruction, /imperial credits/);
+  assert.match(instruction, /NICKNAME/);
+});
+
+// --- F1: recording must not wait on the level-up announcement ---
+// handleMessage runs once per gateway event and events are not serialised
+// (src/discord.js:167-173). If the announcement's `await safeSend` sits
+// before `history.record(entry)`, a second author's message can be recorded
+// first while the first author's Discord round trip is still in flight,
+// putting history in reverse arrival order.
+
+test('F1: a message crossing a level is recorded before a concurrent message that arrives while the announcement is in flight', async () => {
+  let resolveAnnouncement;
+  const announcementSent = new Promise((resolve) => { resolveAnnouncement = resolve; });
+  let sendCount = 0;
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({
+    credits: store,
+    config: { ...config, credits: creditsConfig },
+    send: async (text, sent) => {
+      sendCount += 1;
+      if (sendCount === 1) await announcementSent;
+      sent.push(text);
+      return `sent${sent.length}`;
+    },
+  });
+
+  // Bob's message crosses level 0 -> 1, so handleMessage suspends inside the
+  // level-up announcement's `await safeSend` before it ever gets to record.
+  const bobDone = s.conversation.handleMessage(
+    msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io,
+  );
+  await tick();
+  await tick();
+
+  // While Bob's announcement is still pending, Ann's message arrives on a
+  // separate gateway event and runs to completion.
+  await s.conversation.handleMessage(
+    msg({ text: 'hi there', authorId: 'u2', name: 'Ann' }), s.io,
+  );
+
+  resolveAnnouncement();
+  await bobDone;
+
+  const names = s.history.entries('chan').map((e) => e.name);
+  const bobIndex = names.indexOf('Bob');
+  const annIndex = names.indexOf('Ann');
+  assert.ok(bobIndex !== -1 && annIndex !== -1, `expected both entries recorded, got ${JSON.stringify(names)}`);
+  assert.ok(bobIndex < annIndex, `expected Bob recorded before Ann, got ${JSON.stringify(names)}`);
+});
+
+// --- F2: the level-up line itself must join history ---
+// It is the only thing Lu says in a channel that was never recorded, so the
+// next reply's prompt has no antecedent for it.
+
+test('F2: the level-up announcement is recorded in history using the id safeSend returns', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  const entries = s.history.entries('chan');
+  const last = entries.at(-1);
+  assert.equal(last.isLu, true);
+  assert.match(last.text, /reaches level 1/);
+  assert.equal(last.messageId, 'sent1');
+  // And it comes after the triggering message, not before it.
+  assert.equal(entries.at(-2).name, 'Bob');
+});
+
+test('F2: a reply following a level-up sees the announcement as prior context', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  await say(s, msg({ text: 'lu since when', mentionsLu: true, authorId: 'u2', name: 'Ann' }));
+  const history = s.calls.respond.at(-1).history;
+  assert.ok(history.some((h) => /reaches level 1/.test(h.content)));
 });

@@ -65,6 +65,31 @@ export function loadConfig(env) {
     throw new Error(`RANDOM_REPLY_CHANCE must be between 0 and 1, got ${randomReplyChance}`);
   }
 
+  const credits = {
+    enabled: (env.CREDITS_ENABLED ?? 'true') !== 'false',
+    min: num(env, 'CREDITS_MIN', 15),
+    max: num(env, 'CREDITS_MAX', 25),
+    cooldownSeconds: num(env, 'CREDITS_COOLDOWN_SECONDS', 30),
+    minChars: num(env, 'CREDITS_MIN_CHARS', 3),
+    announceLevelUp: (env.CREDITS_ANNOUNCE_LEVEL_UP ?? 'true') !== 'false',
+    flushMs: num(env, 'CREDITS_FLUSH_MS', 2000),
+  };
+  if (credits.min > credits.max) {
+    throw new Error(`CREDITS_MIN must not exceed CREDITS_MAX (${credits.max}), got ${credits.min}`);
+  }
+  if (credits.min < 0) {
+    throw new Error(`CREDITS_MIN must not be negative, got ${credits.min}`);
+  }
+  if (credits.cooldownSeconds < 0) {
+    throw new Error(`CREDITS_COOLDOWN_SECONDS must not be negative, got ${credits.cooldownSeconds}`);
+  }
+  if (credits.minChars < 0) {
+    throw new Error(`CREDITS_MIN_CHARS must not be negative, got ${credits.minChars}`);
+  }
+  if (credits.flushMs < 0) {
+    throw new Error(`CREDITS_FLUSH_MS must not be negative, got ${credits.flushMs}`);
+  }
+
   return {
     discord: {
       token: env.DISCORD_BOT_TOKEN,
@@ -103,6 +128,7 @@ export function loadConfig(env) {
       // Can be turned off to let anyone ask.
       requirePermission: (env.NICKNAME_REQUIRE_PERMISSION ?? 'true') !== 'false',
     },
+    credits,
   };
 }
 

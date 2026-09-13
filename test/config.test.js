@@ -181,3 +181,74 @@ test('a random reply chance outside 0..1 is rejected', () => {
     (err) => err.message.includes('RANDOM_REPLY_CHANCE'),
   );
 });
+
+// --- Imperial Credits config ---
+// Booleans follow the codebase's default-on idiom: only the literal string
+// 'false' turns one off. Ranges throw at startup with the offending value,
+// because a min above a max is a configuration error and should not wait to
+// become a runtime surprise.
+
+test('credits config defaults', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.credits, {
+    enabled: true,
+    min: 15,
+    max: 25,
+    cooldownSeconds: 30,
+    minChars: 3,
+    announceLevelUp: true,
+    flushMs: 2000,
+  });
+});
+
+test('credits can be turned off', () => {
+  assert.equal(loadConfig({ ...valid, CREDITS_ENABLED: 'false' }).credits.enabled, false);
+});
+
+test('level-up announcements can be turned off', () => {
+  assert.equal(
+    loadConfig({ ...valid, CREDITS_ANNOUNCE_LEVEL_UP: 'false' }).credits.announceLevelUp,
+    false,
+  );
+});
+
+test('credits award range is configurable', () => {
+  const cfg = loadConfig({ ...valid, CREDITS_MIN: '5', CREDITS_MAX: '9' });
+  assert.equal(cfg.credits.min, 5);
+  assert.equal(cfg.credits.max, 9);
+});
+
+test('cooldown, minimum length and flush interval are configurable', () => {
+  const cfg = loadConfig({
+    ...valid,
+    CREDITS_COOLDOWN_SECONDS: '60',
+    CREDITS_MIN_CHARS: '1',
+    CREDITS_FLUSH_MS: '500',
+  });
+  assert.equal(cfg.credits.cooldownSeconds, 60);
+  assert.equal(cfg.credits.minChars, 1);
+  assert.equal(cfg.credits.flushMs, 500);
+});
+
+test('a minimum above the maximum is rejected with both values', () => {
+  assert.throws(
+    () => loadConfig({ ...valid, CREDITS_MIN: '30', CREDITS_MAX: '20' }),
+    /CREDITS_MIN.*30.*20|CREDITS_MIN.*20.*30/s,
+  );
+});
+
+test('a negative minimum award is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_MIN: '-1' }), /CREDITS_MIN/);
+});
+
+test('a negative minimum message length is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_MIN_CHARS: '-1' }), /CREDITS_MIN_CHARS/);
+});
+
+test('a negative flush interval is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_FLUSH_MS: '-1' }), /CREDITS_FLUSH_MS/);
+});
+
+test('a negative cooldown is rejected', () => {
+  assert.throws(() => loadConfig({ ...valid, CREDITS_COOLDOWN_SECONDS: '-1' }), /CREDITS_COOLDOWN_SECONDS/);
+});

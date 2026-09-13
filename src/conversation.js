@@ -5,6 +5,12 @@ import { EXPLAIN_RE, NOT_FOUND, formatDecision } from './decisions.js';
 import { withTimeout, TimeoutError } from './timeout.js';
 import { truncateForDiscord } from './discord.js';
 import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
+import { awardForMessage } from './credits/earn.js';
+import {
+  LEADERBOARD_RE, resolveTarget, isCreditsCommand,
+  formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
+  CREDITS_DISABLED,
+} from './credits/commands.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
 // 'empty' has no line of its own (it only arises from a hand-crafted marker
@@ -40,6 +46,7 @@ export function createConversation({
   chooseChunks,
   respondWithReason,
   isAddressed,
+  credits = null,
   now = Date.now,
   random = Math.random,
   setTimeoutImpl = setTimeout,
@@ -160,6 +167,19 @@ export function createConversation({
       let result;
       try {
         const { prior } = split(channelId, entry);
+        // Composed rather than a single expression: this used to be nickname-only,
+        // and the next feature that wants a fragment should not have to add a
+        // third parameter. Stays undefined when there is nothing to add --
+        // buildMessages branches on it and an ordinary reply's system message
+        // must stay byte-identical to what it was before credits existed.
+        const instructions = [];
+        if (asksRename && !asksReset) instructions.push(NICKNAME_INSTRUCTION);
+        if (credits && config.credits?.enabled) {
+          instructions.push(creditsInstruction({
+            name: entry.name,
+            credits: credits.get(entry.authorId).credits,
+          }));
+        }
         result = await withTimeout(async (signal) => {
           const chunks = await chooseChunks(entry.text);
           return respondWithReason({
@@ -170,7 +190,7 @@ export function createConversation({
             llm,
             config,
             signal,
-            extraInstruction: asksRename && !asksReset ? NICKNAME_INSTRUCTION : undefined,
+            extraInstruction: instructions.length > 0 ? instructions.join('\n\n') : undefined,
           });
         }, config.reply.timeoutSeconds * 1000, { setTimeoutImpl, clearTimeoutImpl });
       } catch (err) {
@@ -305,7 +325,63 @@ export function createConversation({
       return;
     }
 
+    // With the ledger switched off, a credits/leaderboard command is no
+    // longer recognised below and would otherwise reach the model with no
+    // creditsInstruction to anchor it, free to invent a balance -- forbidden
+    // by the spec. Answered deterministically instead (F7).
+    if (config.credits && !config.credits.enabled && !entry.isBot
+      && (LEADERBOARD_RE.test(entry.text) || isCreditsCommand(entry))) {
+      await safeSend(state, CREDITS_DISABLED);
+      return;
+    }
+
+    // Commands answer and stop, exactly as "lu explain" does: a command is not
+    // conversation and must not enter the prompt. This ordering is also what
+    // stops a command paying its own asker -- awarding is below it.
+    let award = null;
+    if (credits && config.credits?.enabled && !entry.isBot) {
+      if (LEADERBOARD_RE.test(entry.text)) {
+        await safeSend(state, formatLeaderboard(credits.top(10)));
+        return;
+      }
+      if (isCreditsCommand(entry)) {
+        const target = resolveTarget(entry, entry.luId);
+        const who = target ?? { id: entry.authorId, name: entry.name };
+        await safeSend(state, formatCredits({ name: who.name, credits: credits.get(who.id).credits }));
+        return;
+      }
+
+      // Outside the reply pipeline on purpose (LU2, bot.py:347-348): credit
+      // accrues from taking part, not from getting Lu's attention. Entirely
+      // synchronous, so nothing here can delay the record below.
+      award = awardForMessage(credits, entry, { now, random, config });
+    }
+
+    // Recorded before anything below gets a chance to await: handleMessage
+    // runs once per gateway event and events are not serialised
+    // (src/discord.js:167-173), so an await placed ahead of this record would
+    // let a second author's message be recorded first while this one's
+    // Discord round trip for the level-up line is still in flight, putting
+    // history in reverse arrival order (F1).
     history.record(entry);
+
+    if (award?.leveledTo !== null && award !== null && config.credits.announceLevelUp) {
+      const text = formatLevelUp({ name: entry.name, level: award.leveledTo });
+      const id = await safeSend(state, text);
+      // Recorded after the triggering entry, using the id safeSend returns --
+      // the same shape as Lu's ordinary replies (see history.record at
+      // line ~298) -- so the next prompt has an antecedent for it (F2). Not
+      // added to the decision log: `lu explain` is about why he replied, and
+      // this is not a reply.
+      if (id !== null) {
+        history.record({
+          messageId: id, channelId: entry.channelId, authorId: 'lu', name: 'Lu', isBot: true, isLu: true,
+          mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
+          inGuild: false, authorCanManageNicknames: false,
+          at: now(), text,
+        });
+      }
+    }
     const decision = decide({
       entry,
       history: history.entries(entry.channelId),

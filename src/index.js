@@ -11,6 +11,7 @@ import { createHistory } from './history.js';
 import { createDecisionLog } from './decisions.js';
 import { isAddressedToLu, hasModel } from './addressee.js';
 import { createConversation } from './conversation.js';
+import { createCreditStore } from './credits/store.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -38,6 +39,17 @@ console.log(
     ? `Loaded ${corpus.size} chunks (${corpus.dim} dimensions).`
     : 'No corpus found. Running persona-only.',
 );
+
+// Resolved against this module for the same reason the corpus is: under
+// launchd the working directory is not the repo root, and a relative path
+// here is an ENOENT crash at startup.
+const creditStore = config.credits.enabled
+  ? await createCreditStore({ dir: join(projectRoot, 'data'), flushMs: config.credits.flushMs })
+  : null;
+
+if (creditStore) {
+  console.log(`Credit ledger loaded: ${creditStore.all().length} members.`);
+}
 
 // A missing judge model would otherwise surface as a 404 on every judge call.
 // Treat it as "never aimed at me" and say so once, at startup; direct address
@@ -77,6 +89,7 @@ const conversation = createConversation({
   },
   respondWithReason,
   isAddressed: ({ entries }) => isAddressedToLu({ entries, llm, config, available: addresseeAvailable }),
+  credits: creditStore,
 });
 
 await startBot({
@@ -85,3 +98,23 @@ await startBot({
 });
 
 console.log('Lu Bot is online.');
+
+// launchd stops the service with SIGTERM. Without this, every restart loses up
+// to CREDITS_FLUSH_MS of awards -- small, but silent, and it would look like
+// the ledger was randomly forgetting things.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    try {
+      await creditStore?.close();
+    } catch (err) {
+      // close() now rejects when the final flush did not succeed (F3 in the
+      // final review): every award since the last successful write would
+      // otherwise be lost with nothing but this log line to show for it, and
+      // exit 0 would tell launchd it was a clean stop. Exit non-zero so the
+      // log distinguishes "stopped" from "stopped and lost the ledger".
+      console.error('Failed to flush the credit ledger on shutdown:', err);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+}
