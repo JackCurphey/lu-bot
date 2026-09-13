@@ -42,7 +42,8 @@ function msg(over = {}) {
   return {
     messageId: `m${seq}`, channelId: 'chan', authorId: 'sam', name: 'sam', isBot: false, isLu: false,
     mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
-    at: T0, text: 'hello', authorCanManageNicknames: true, inGuild: true, ...over,
+    at: T0, text: 'hello', authorCanManageNicknames: true, inGuild: true,
+    mentions: [], luId: 'lu', ...over,
   };
 }
 const luSaid = (text = 'the state is a tool') => msg({ authorId: 'lu', name: 'Lu', isLu: true, isBot: true, text });
@@ -569,4 +570,111 @@ test('a judge YES that fails to reply still posts the headache', async () => {
   s.timers.fire(PAUSE_MS);
   await s.conversation.idle('chan');
   assert.deepEqual(s.sent, [HEADACHE]);
+});
+
+// --- Imperial Credits ---
+// Awarding sits outside the reply pipeline, which is the structural lesson
+// from LU2 (bot.py:347-348): credit accrues from taking part, not from
+// getting Lu's attention. Commands early-return before awarding, so asking
+// for your balance cannot pay you.
+
+const creditsConfig = {
+  enabled: true, min: 15, max: 25, cooldownSeconds: 30, minChars: 3,
+  announceLevelUp: true, flushMs: 2000,
+};
+
+function creditsStore(seed = {}) {
+  const users = new Map(Object.entries(seed));
+  const empty = () => ({ credits: 0, name: '', lastAwardAt: 0, messages: 0, voiceSeconds: 0 });
+  return {
+    get: (id) => ({ ...(users.get(id) ?? empty()) }),
+    award(id, { credits, name, at }) {
+      const rec = users.get(id) ?? empty();
+      rec.credits += credits;
+      rec.lastAwardAt = at;
+      rec.messages += 1;
+      if (name) rec.name = name;
+      users.set(id, rec);
+      return rec.credits;
+    },
+    top: (k) => [...users.entries()]
+      .map(([userId, r]) => ({ userId, name: r.name, credits: r.credits }))
+      .sort((a, b) => b.credits - a.credits || a.userId.localeCompare(b.userId))
+      .slice(0, k),
+  };
+}
+
+test('an ordinary message earns credits', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1' }), s.io);
+  assert.equal(store.get('u1').credits, 25);
+});
+
+test('asking for your balance earns nothing', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1' }), s.io);
+  assert.equal(store.get('u1').credits, 0);
+});
+
+test('asking for your balance replies with it and stops', async () => {
+  const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.equal(s.sent.length, 1);
+  assert.match(s.sent[0], /1,200/);
+  assert.match(s.sent[0], /level 5/);
+});
+
+test('a mentioned member reads as that member, not the asker', async () => {
+  const store = creditsStore({ u2: { credits: 300, name: 'Ann', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({
+    text: 'lu credits @Ann', authorId: 'u1', name: 'Bob',
+    mentions: [{ id: 'u2', name: 'Ann' }],
+  }), s.io);
+  assert.match(s.sent[0], /Ann/);
+  assert.match(s.sent[0], /300/);
+});
+
+test('the leaderboard replies and stops', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'lu leaderboard', authorId: 'u1' }), s.io);
+  assert.equal(s.sent.length, 1);
+  assert.match(s.sent[0], /1\. Bob/);
+});
+
+test('a bot message earns nothing', async () => {
+  const store = creditsStore();
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', isBot: true }), s.io);
+  assert.equal(store.get('u1').credits, 0);
+});
+
+test('crossing a level posts a line in the channel', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.ok(s.sent.some((t) => /level 1/.test(t)));
+});
+
+test('level-up announcements can be turned off', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({
+    credits: store,
+    config: { ...config, credits: { ...creditsConfig, announceLevelUp: false } },
+  });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  assert.ok(!s.sent.some((t) => /reaches level/.test(t)));
+  assert.equal(store.get('u1').credits, 115);
+});
+
+// Roughly 390 tests predate this feature and build config objects with no
+// credits section. None of them may break.
+test('with no store and no credits config, nothing changes', async () => {
+  const s = setup({});
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1' }), s.io);
+  // No throw is the assertion.
 });

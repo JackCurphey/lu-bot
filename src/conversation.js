@@ -5,6 +5,11 @@ import { EXPLAIN_RE, NOT_FOUND, formatDecision } from './decisions.js';
 import { withTimeout, TimeoutError } from './timeout.js';
 import { truncateForDiscord } from './discord.js';
 import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNickname, validateNickname, NICKNAME_LINES } from './nickname.js';
+import { awardForMessage } from './credits/earn.js';
+import {
+  CREDITS_RE, LEADERBOARD_RE, resolveTarget,
+  formatCredits, formatLeaderboard, formatLevelUp,
+} from './credits/commands.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
 // 'empty' has no line of its own (it only arises from a hand-crafted marker
@@ -40,6 +45,7 @@ export function createConversation({
   chooseChunks,
   respondWithReason,
   isAddressed,
+  credits = null,
   now = Date.now,
   random = Math.random,
   setTimeoutImpl = setTimeout,
@@ -303,6 +309,29 @@ export function createConversation({
       const rec = decisions.find(entry.channelId, explain[1]);
       await safeSend(state, rec ? formatDecision(rec) : NOT_FOUND);
       return;
+    }
+
+    // Commands answer and stop, exactly as "lu explain" does: a command is not
+    // conversation and must not enter the prompt. This ordering is also what
+    // stops a command paying its own asker -- awarding is below it.
+    if (credits && config.credits?.enabled && !entry.isBot) {
+      if (LEADERBOARD_RE.test(entry.text)) {
+        await safeSend(state, formatLeaderboard(credits.top(10)));
+        return;
+      }
+      if (CREDITS_RE.test(entry.text)) {
+        const target = resolveTarget(entry, entry.luId);
+        const who = target ?? { id: entry.authorId, name: entry.name };
+        await safeSend(state, formatCredits({ name: who.name, credits: credits.get(who.id).credits }));
+        return;
+      }
+
+      // Outside the reply pipeline on purpose (LU2, bot.py:347-348): credit
+      // accrues from taking part, not from getting Lu's attention.
+      const award = awardForMessage(credits, entry, { now, random, config });
+      if (award?.leveledTo !== null && award !== null && config.credits.announceLevelUp) {
+        await safeSend(state, formatLevelUp({ name: entry.name, level: award.leveledTo }));
+      }
     }
 
     history.record(entry);
