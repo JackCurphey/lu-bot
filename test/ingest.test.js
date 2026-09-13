@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ingestFiles } from '../src/corpus/ingest.js';
+import { ingestFiles, ingestTexts } from '../src/corpus/ingest.js';
 import { chunkText } from '../src/corpus/chunk.js';
 
 const fakeLlm = {
@@ -93,4 +93,61 @@ test('embeds in batches without dropping chunks', async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// Returns a distinct vector per input so batching can be checked by identity.
+const countingLlm = (seen = []) => ({
+  seen,
+  async embed({ input }) {
+    seen.push(input.length);
+    return input.map((_, i) => [input.length, i]);
+  },
+});
+
+test('texts are chunked, embedded and returned as records', async () => {
+  const llm = countingLlm();
+  const records = await ingestTexts({
+    docs: [{ text: 'one two three\n\nfour five six', title: 'T', author: 'A' }],
+    llm,
+    embedModel: 'm',
+    chunkOptions: { targetWords: 3, overlapWords: 0 },
+  });
+  assert.equal(records.length, 2);
+  assert.deepEqual(records.map((r) => r.index), [0, 1]);
+  assert.equal(records[0].source.title, 'T');
+  assert.equal(records[0].source.author, 'A');
+  assert.equal(records[0].source.chapter, null);
+});
+
+test('a learned document carries its provenance onto every chunk', async () => {
+  const learned = { url: 'https://x/y.pdf', addedBy: { id: '1', name: 'Bob' }, at: 123 };
+  const records = await ingestTexts({
+    docs: [{ text: 'one two\n\nthree four', title: 'T', author: 'A', learned }],
+    llm: countingLlm(),
+    embedModel: 'm',
+    chunkOptions: { targetWords: 2, overlapWords: 0 },
+  });
+  assert.ok(records.length > 0);
+  for (const record of records) assert.deepEqual(record.source.learned, learned);
+});
+
+test('a curated document carries no learned key at all', async () => {
+  const [record] = await ingestTexts({
+    docs: [{ text: 'one two three', title: 'T', author: 'A' }],
+    llm: countingLlm(),
+    embedModel: 'm',
+  });
+  assert.equal('learned' in record.source, false);
+});
+
+test('embedding happens in batches of batchSize', async () => {
+  const seen = [];
+  await ingestTexts({
+    docs: [{ text: 'a\n\nb\n\nc\n\nd\n\ne', title: 'T', author: 'A' }],
+    llm: countingLlm(seen),
+    embedModel: 'm',
+    batchSize: 2,
+    chunkOptions: { targetWords: 1, overlapWords: 0 },
+  });
+  assert.deepEqual(seen, [2, 2, 1]);
 });

@@ -1,16 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { chunkText } from './chunk.js';
 
-export async function ingestFiles({ files, llm, embedModel, batchSize = 32 }) {
+// The embedding half of the pipeline, split out of ingestFiles so the runtime
+// path (src/corpus/library.js) can reach it with text that never came from a
+// file on disk. ingestFiles is now a thin reader in front of it.
+export async function ingestTexts({ docs, llm, embedModel, batchSize = 32, chunkOptions }) {
   const pending = [];
 
-  for (const file of files) {
-    const text = await readFile(file.path, 'utf8');
-    for (const chunk of chunkText(text)) {
-      pending.push({
-        text: chunk.text,
-        source: { title: file.title, author: file.author, chapter: null },
-      });
+  for (const doc of docs) {
+    for (const chunk of chunkText(doc.text, chunkOptions)) {
+      const source = { title: doc.title, author: doc.author, chapter: null };
+      // Absent, not null, on a curated document: the presence of the key is
+      // what tells the two apart everywhere downstream, so a null would make
+      // every curated chunk look learned.
+      if (doc.learned) source.learned = doc.learned;
+      pending.push({ text: chunk.text, source });
     }
   }
 
@@ -24,4 +28,13 @@ export async function ingestFiles({ files, llm, embedModel, batchSize = 32 }) {
   }
 
   return records;
+}
+
+export async function ingestFiles({ files, llm, embedModel, batchSize = 32 }) {
+  const docs = await Promise.all(files.map(async (file) => ({
+    text: await readFile(file.path, 'utf8'),
+    title: file.title,
+    author: file.author,
+  })));
+  return ingestTexts({ docs, llm, embedModel, batchSize });
 }
