@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export const CREDITS_FILE = 'credits.json';
@@ -65,6 +65,10 @@ export async function createCreditStore({
       2,
     );
     try {
+      // dir exists on a fresh clone only because data/raw/.gitkeep is
+      // tracked; credits.json* is gitignored. Without this, removing
+      // data/raw ENOENTs every write silently forever (F4).
+      await mkdir(dir, { recursive: true });
       // Temp file then rename — atomic on macOS. Writing the live file in
       // place, as LU2 did, truncates everything if the process dies mid-write.
       await writeFile(tmp, snapshot, 'utf8');

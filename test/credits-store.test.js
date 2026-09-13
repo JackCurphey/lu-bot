@@ -85,18 +85,18 @@ test('writing leaves no temp file behind', async () => {
 
 test('a burst of awards is written once, not once per award', async () => {
   const dir = await scratch();
-  let writes = 0;
+  let timersScheduled = 0;
   const store = await createCreditStore({
     dir,
     flushMs: 10,
     // Count flushes by counting timer scheduling: a debounced store schedules
     // one timer for a burst, not one per award.
-    setTimeoutImpl: (fn, ms) => { writes += 1; return setTimeout(fn, ms); },
+    setTimeoutImpl: (fn, ms) => { timersScheduled += 1; return setTimeout(fn, ms); },
   });
   store.award('u1', { credits: 20, name: 'Bob', at: 1 });
   store.award('u2', { credits: 20, name: 'Ann', at: 2 });
   store.award('u3', { credits: 20, name: 'Cid', at: 3 });
-  assert.equal(writes, 1);
+  assert.equal(timersScheduled, 1);
   await store.close();
   await rm(dir, { recursive: true, force: true });
 });
@@ -152,6 +152,22 @@ test('F3: a write failure leaves the store dirty, so a later successful flush re
   assert.equal(raw.users.u1.credits, 20);
   await store.close();
   await rm(dir, { recursive: true, force: true });
+});
+
+// --- F4: the store must not depend on `dir` already existing ---
+// data/ exists on a fresh clone only because data/raw/.gitkeep is tracked;
+// data/credits.json* is gitignored. Remove data/raw and every write ENOENTs
+// forever, silently, since nothing here ever created the directory.
+
+test('F4: a store pointed at a non-existent nested directory still writes', async () => {
+  const base = await scratch();
+  const dir = join(base, 'nested', 'deeper');
+  const store = await createCreditStore({ dir, flushMs: 0 });
+  store.award('u1', { credits: 20, name: 'Bob', at: 1 });
+  await store.close();
+  const raw = JSON.parse(await readFile(join(dir, CREDITS_FILE), 'utf8'));
+  assert.equal(raw.users.u1.credits, 20);
+  await rm(base, { recursive: true, force: true });
 });
 
 test('top is descending, capped, and breaks ties predictably', async () => {
