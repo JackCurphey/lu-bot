@@ -327,6 +327,7 @@ export function createConversation({
     // Commands answer and stop, exactly as "lu explain" does: a command is not
     // conversation and must not enter the prompt. This ordering is also what
     // stops a command paying its own asker -- awarding is below it.
+    let award = null;
     if (credits && config.credits?.enabled && !entry.isBot) {
       if (LEADERBOARD_RE.test(entry.text)) {
         await safeSend(state, formatLeaderboard(credits.top(10)));
@@ -340,14 +341,36 @@ export function createConversation({
       }
 
       // Outside the reply pipeline on purpose (LU2, bot.py:347-348): credit
-      // accrues from taking part, not from getting Lu's attention.
-      const award = awardForMessage(credits, entry, { now, random, config });
-      if (award?.leveledTo !== null && award !== null && config.credits.announceLevelUp) {
-        await safeSend(state, formatLevelUp({ name: entry.name, level: award.leveledTo }));
-      }
+      // accrues from taking part, not from getting Lu's attention. Entirely
+      // synchronous, so nothing here can delay the record below.
+      award = awardForMessage(credits, entry, { now, random, config });
     }
 
+    // Recorded before anything below gets a chance to await: handleMessage
+    // runs once per gateway event and events are not serialised
+    // (src/discord.js:167-173), so an await placed ahead of this record would
+    // let a second author's message be recorded first while this one's
+    // Discord round trip for the level-up line is still in flight, putting
+    // history in reverse arrival order (F1).
     history.record(entry);
+
+    if (award?.leveledTo !== null && award !== null && config.credits.announceLevelUp) {
+      const text = formatLevelUp({ name: entry.name, level: award.leveledTo });
+      const id = await safeSend(state, text);
+      // Recorded after the triggering entry, using the id safeSend returns --
+      // the same shape as Lu's ordinary replies (see history.record at
+      // line ~298) -- so the next prompt has an antecedent for it (F2). Not
+      // added to the decision log: `lu explain` is about why he replied, and
+      // this is not a reply.
+      if (id !== null) {
+        history.record({
+          messageId: id, channelId: entry.channelId, authorId: 'lu', name: 'Lu', isBot: true, isLu: true,
+          mentionsLu: false, mentionsOthers: false, repliesToLu: false, repliesToOther: false,
+          inGuild: false, authorCanManageNicknames: false,
+          at: now(), text,
+        });
+      }
+    }
     const decision = decide({
       entry,
       history: history.entries(entry.channelId),

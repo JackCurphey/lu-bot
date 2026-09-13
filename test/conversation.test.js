@@ -48,7 +48,7 @@ function msg(over = {}) {
 }
 const luSaid = (text = 'the state is a tool') => msg({ authorId: 'lu', name: 'Lu', isLu: true, isBot: true, text });
 
-function setup({ applyNickname, ...over } = {}) {
+function setup({ applyNickname, send, ...over } = {}) {
   const timers = fakeTimers();
   const history = createHistory({ limit: 20, trimTo: 10 });
   const decisions = createDecisionLog();
@@ -56,7 +56,14 @@ function setup({ applyNickname, ...over } = {}) {
   const sent = [];
   let typingStarts = 0; let typingStops = 0;
   const io = {
-    async send(text) { sent.push(text); return `sent${sent.length}`; },
+    // `send`, when given, lets a test control when a particular send resolves
+    // (e.g. a deferred promise) so it can drive interleaving between two
+    // concurrent handleMessage calls -- gateway events are not serialised.
+    async send(text) {
+      if (send) return send(text, sent);
+      sent.push(text);
+      return `sent${sent.length}`;
+    },
     startTyping() { typingStarts++; return { stop() { typingStops++; } }; },
     async applyNickname(name) {
       calls.applyNickname.push(name);
@@ -707,4 +714,77 @@ test('a rename request and the balance are both carried', async () => {
   const instruction = s.calls.respond[0].extraInstruction;
   assert.match(instruction, /imperial credits/);
   assert.match(instruction, /NICKNAME/);
+});
+
+// --- F1: recording must not wait on the level-up announcement ---
+// handleMessage runs once per gateway event and events are not serialised
+// (src/discord.js:167-173). If the announcement's `await safeSend` sits
+// before `history.record(entry)`, a second author's message can be recorded
+// first while the first author's Discord round trip is still in flight,
+// putting history in reverse arrival order.
+
+test('F1: a message crossing a level is recorded before a concurrent message that arrives while the announcement is in flight', async () => {
+  let resolveAnnouncement;
+  const announcementSent = new Promise((resolve) => { resolveAnnouncement = resolve; });
+  let sendCount = 0;
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({
+    credits: store,
+    config: { ...config, credits: creditsConfig },
+    send: async (text, sent) => {
+      sendCount += 1;
+      if (sendCount === 1) await announcementSent;
+      sent.push(text);
+      return `sent${sent.length}`;
+    },
+  });
+
+  // Bob's message crosses level 0 -> 1, so handleMessage suspends inside the
+  // level-up announcement's `await safeSend` before it ever gets to record.
+  const bobDone = s.conversation.handleMessage(
+    msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io,
+  );
+  await tick();
+  await tick();
+
+  // While Bob's announcement is still pending, Ann's message arrives on a
+  // separate gateway event and runs to completion.
+  await s.conversation.handleMessage(
+    msg({ text: 'hi there', authorId: 'u2', name: 'Ann' }), s.io,
+  );
+
+  resolveAnnouncement();
+  await bobDone;
+
+  const names = s.history.entries('chan').map((e) => e.name);
+  const bobIndex = names.indexOf('Bob');
+  const annIndex = names.indexOf('Ann');
+  assert.ok(bobIndex !== -1 && annIndex !== -1, `expected both entries recorded, got ${JSON.stringify(names)}`);
+  assert.ok(bobIndex < annIndex, `expected Bob recorded before Ann, got ${JSON.stringify(names)}`);
+});
+
+// --- F2: the level-up line itself must join history ---
+// It is the only thing Lu says in a channel that was never recorded, so the
+// next reply's prompt has no antecedent for it.
+
+test('F2: the level-up announcement is recorded in history using the id safeSend returns', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  const entries = s.history.entries('chan');
+  const last = entries.at(-1);
+  assert.equal(last.isLu, true);
+  assert.match(last.text, /reaches level 1/);
+  assert.equal(last.messageId, 'sent1');
+  // And it comes after the triggering message, not before it.
+  assert.equal(entries.at(-2).name, 'Bob');
+});
+
+test('F2: a reply following a level-up sees the announcement as prior context', async () => {
+  const store = creditsStore({ u1: { credits: 90, name: 'Bob', lastAwardAt: 0, messages: 4, voiceSeconds: 0 } });
+  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
+  await say(s, msg({ text: 'lu since when', mentionsLu: true, authorId: 'u2', name: 'Ann' }));
+  const history = s.calls.respond.at(-1).history;
+  assert.ok(history.some((h) => /reaches level 1/.test(h.content)));
 });
