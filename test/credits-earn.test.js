@@ -112,6 +112,17 @@ test('an ineligible message does not move the cooldown clock', () => {
   assert.equal(store.get('u1').lastAwardAt, 100000);
 });
 
+// The return value alone cannot see this bug: a cooldown-blocked message
+// returns null either way, whether or not it quietly awarded first. Only
+// inspecting the store afterward catches a cooldown check that runs too late.
+test('a message blocked by the cooldown leaves the store untouched', () => {
+  const store = fakeStore({ u1: { credits: 15, name: 'Bob', lastAwardAt: 100000, messages: 1, voiceSeconds: 0 } });
+  awardForMessage(store, entry(), { now: () => 129999, random: lowest, config: config() });
+  const after = store.get('u1');
+  assert.equal(after.credits, 15);
+  assert.equal(after.lastAwardAt, 100000);
+});
+
 // --- Levelling ---
 
 test('crossing a level is reported once, with the new level', () => {
