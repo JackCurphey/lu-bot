@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CREDITS_RE, LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
-  EMPTY_LEADERBOARD,
+  EMPTY_LEADERBOARD, mentionsLedger, CREDITS_STANDING_RULE,
 } from '../src/credits/commands.js';
 
 // --- Anchoring ---
@@ -172,4 +172,53 @@ test('the persona fragment carries the number and forbids changing it', () => {
   assert.match(out, /1,200/);
   assert.match(out, /level 5/);
   assert.match(out, /never|not|cannot|don't/i);
+});
+
+// --- When the ledger reaches the prompt ----------------------------------------
+//
+// The balance used to be injected into every single reply, with the fragment
+// itself asking Lu not to force it in -- a losing instruction, since the number
+// was sitting in his context every time. It now arrives when someone raises the
+// subject, or on an occasional unprompted roll.
+
+test('mentionsLedger catches the words people actually use', () => {
+  for (const text of [
+    'how many credits do i have',
+    'what level am i',
+    'show me the leaderboard',
+    'the ledger is rigged',
+    'i have more Credits than you',
+    'my XP is embarrassing',
+  ]) {
+    assert.ok(mentionsLedger(text), `should have matched: ${text}`);
+  }
+});
+
+test('mentionsLedger ignores ordinary conversation', () => {
+  for (const text of [
+    'i just want a quiet weekend',
+    'the credit crunch was a crisis of capital',
+    'levelling the playing field',
+    'what do you think of taiwan',
+  ]) {
+    assert.ok(!mentionsLedger(text), `should not have matched: ${text}`);
+  }
+});
+
+// Whole words only, the same rule attention.js applies to its keywords --
+// otherwise "levelling" and "accreditation" drag the ledger into the prompt.
+test('mentionsLedger does not fire on a word that merely contains one', () => {
+  assert.ok(!mentionsLedger('accreditation is a racket'));
+  assert.ok(!mentionsLedger('levelling the playing field'));
+});
+
+test('the standing rule forbids inventing a number', () => {
+  assert.match(CREDITS_STANDING_RULE, /never/i);
+  assert.ok(CREDITS_STANDING_RULE.length > 0);
+});
+
+// The full fragment carries a real balance; the standing rule must not, or a
+// reply with no balance in context could still quote one.
+test('the standing rule states no balance of its own', () => {
+  assert.ok(!/\d/.test(CREDITS_STANDING_RULE));
 });

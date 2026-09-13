@@ -75,7 +75,17 @@ export function loadConfig(env) {
     minChars: num(env, 'CREDITS_MIN_CHARS', 3),
     announceLevelUp: (env.CREDITS_ANNOUNCE_LEVEL_UP ?? 'true') !== 'false',
     flushMs: num(env, 'CREDITS_FLUSH_MS', 2000),
+    // How often the balance reaches the prompt when nobody has raised the
+    // subject. It used to reach it on every reply, which is why Lu mentioned
+    // credits almost every time; he keeps the opening to bring it up himself,
+    // but rarely.
+    mentionChance: num(env, 'CREDITS_MENTION_CHANCE', 0.15),
   };
+  if (credits.mentionChance < 0 || credits.mentionChance > 1) {
+    throw new Error(
+      `CREDITS_MENTION_CHANCE must be between 0 and 1, got ${credits.mentionChance}`,
+    );
+  }
   if (credits.min > credits.max) {
     throw new Error(`CREDITS_MIN must not exceed CREDITS_MAX (${credits.max}), got ${credits.min}`);
   }

@@ -10,7 +10,7 @@ import { pickMode, moodInstruction } from './mood.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
-  CREDITS_DISABLED,
+  CREDITS_DISABLED, CREDITS_STANDING_RULE, mentionsLedger,
 } from './credits/commands.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
@@ -186,11 +186,23 @@ export function createConversation({
           rec?.reasons.push(`mode: ${mode}`);
         }
         if (asksRename && !asksReset) instructions.push(NICKNAME_INSTRUCTION);
+        // The standing rule is always here while credits are on; the balance
+        // itself only when someone has raised the subject, or on an occasional
+        // unprompted roll. Injecting the balance every time is what made Lu
+        // mention credits in almost every reply -- the fragment asked him not
+        // to force it, which was never going to beat the number being in front
+        // of him on every turn. The standing rule is what keeps a reply that
+        // raises the ledger without a balance from inventing one.
         if (credits && config.credits?.enabled) {
-          instructions.push(creditsInstruction({
-            name: entry.name,
-            credits: credits.get(entry.authorId).credits,
-          }));
+          instructions.push(CREDITS_STANDING_RULE);
+          const raised = mentionsLedger(entry.text);
+          if (raised || random() < (config.credits.mentionChance ?? 0)) {
+            instructions.push(creditsInstruction({
+              name: entry.name,
+              credits: credits.get(entry.authorId).credits,
+            }));
+            rec?.reasons.push(raised ? 'ledger: they raised it' : 'ledger: unprompted');
+          }
         }
         result = await withTimeout(async (signal) => {
           const chunks = await chooseChunks(entry.text);

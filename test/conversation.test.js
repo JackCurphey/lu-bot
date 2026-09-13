@@ -5,7 +5,7 @@ import { createHistory } from '../src/history.js';
 import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
 import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 import { respondWithReason } from '../src/responder.js';
-import { CREDITS_DISABLED } from '../src/credits/commands.js';
+import { CREDITS_DISABLED, CREDITS_STANDING_RULE } from '../src/credits/commands.js';
 import { MODE_IDS, moodInstruction } from '../src/mood.js';
 
 const config = {
@@ -725,22 +725,28 @@ test('an ordinary reply still passes no extra instruction', async () => {
   assert.equal(s.calls.respond[0].extraInstruction, undefined);
 });
 
-test('with a store, the reply carries the speaker\'s balance', async () => {
+// mentionChance 1 forces the balance in without relying on the message
+// wording, so this stays a test of what the fragment carries rather than of
+// which words mentionsLedger matches (that is tested in credits-commands).
+test('when the balance is carried, it is the speaker\'s own', async () => {
   const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
-  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  const s = setup({ credits: store, config: { ...config, credits: { ...creditsConfig, mentionChance: 1 } } });
   await say(s, msg({ text: 'lu what do you think', authorId: 'u1', name: 'Bob', mentionsLu: true }));
   assert.match(s.calls.respond[0].extraInstruction, /1,2\d\d imperial credits/);
 });
 
 test('a rename request and the balance are both carried', async () => {
   const store = creditsStore({ u1: { credits: 1200, name: 'Bob', lastAwardAt: 0, messages: 9, voiceSeconds: 0 } });
-  const s = setup({ credits: store, config: { ...config, credits: creditsConfig } });
+  const s = setup({ credits: store, config: { ...config, credits: { ...creditsConfig, mentionChance: 1 } } });
   await say(s, msg({
     text: 'lu change your name to Stone', authorId: 'u1', name: 'Bob',
     mentionsLu: true, inGuild: true, authorCanManageNicknames: true,
   }));
   const instruction = s.calls.respond[0].extraInstruction;
-  assert.match(instruction, /imperial credits/);
+  // The balance, by its number. Matching /imperial credits/ alone would now
+  // also be satisfied by CREDITS_STANDING_RULE, which is present on every
+  // reply -- the assertion would pass without the balance being there at all.
+  assert.match(instruction, /1,2\d\d imperial credits/);
   assert.match(instruction, /NICKNAME/);
 });
 
@@ -889,4 +895,71 @@ test('a reply with no mode records no mode line', async () => {
   await say(s, entry);
   const rec = s.decisions.find('chan', entry.messageId);
   assert.ok(!rec.reasons.some((r) => /mode:/.test(r)), rec.reasons.join(' | '));
+});
+
+// --- When the ledger reaches the prompt ----------------------------------------
+//
+// It used to reach it on every single reply, which is why Lu mentioned credits
+// almost every time. The balance now arrives when someone raises the subject,
+// or on an occasional unprompted roll; the standing rule is always there, so a
+// reply without a balance still cannot invent one.
+
+const ledgerConfig = { ...creditsConfig, mentionChance: 0.15 };
+// lastAwardAt is seeded to now so the 30s cooldown blocks an award and the
+// balance stays put. Without it the message being tested earns 15-25 credits
+// before the reply is built, the balance is no longer 1,200, and the negative
+// assertions below pass because the number moved rather than because the
+// fragment was withheld.
+const seeded = () => creditsStore({
+  u1: { credits: 1200, name: 'Bob', lastAwardAt: T0, messages: 9, voiceSeconds: 0 },
+});
+const withLedger = (over = {}) => setup({
+  credits: seeded(),
+  config: { ...config, credits: ledgerConfig },
+  ...over,
+});
+const said = (s, text) => say(s, msg({ mentionsLu: true, authorId: 'u1', name: 'Bob', text }));
+
+test('raising the ledger puts the balance in the prompt', async () => {
+  const s = withLedger({ random: () => 0.99 });
+  await said(s, '@Lu how many credits do i have');
+  assert.match(extra(s), /1,200 imperial credits/);
+});
+
+test('ordinary conversation leaves the balance out', async () => {
+  const s = withLedger({ random: () => 0.99 });
+  await said(s, '@Lu what do you think of taiwan');
+  assert.ok(!/1,200 imperial credits/.test(extra(s) ?? ''));
+});
+
+test('the unprompted roll can still bring the balance in', async () => {
+  const s = withLedger({ random: () => 0.01 });
+  await said(s, '@Lu what do you think of taiwan');
+  assert.match(extra(s), /1,200 imperial credits/);
+});
+
+test('a zero chance means the balance only ever arrives when asked for', async () => {
+  const s = setup({
+    credits: seeded(),
+    config: { ...config, credits: { ...creditsConfig, mentionChance: 0 } },
+    random: () => 0,
+  });
+  await said(s, '@Lu what do you think of taiwan');
+  assert.ok(!/1,200 imperial credits/.test(extra(s) ?? ''));
+});
+
+test('the standing rule is present even when the balance is not', async () => {
+  const s = withLedger({ random: () => 0.99 });
+  await said(s, '@Lu what do you think of taiwan');
+  assert.ok(extra(s).includes(CREDITS_STANDING_RULE));
+});
+
+test('no ledger instruction of any kind when credits are switched off', async () => {
+  const s = setup({
+    credits: creditsStore(),
+    config: { ...config, credits: { ...ledgerConfig, enabled: false } },
+    random: () => 0,
+  });
+  await said(s, '@Lu how many credits do i have');
+  assert.ok(!(extra(s) ?? '').includes(CREDITS_STANDING_RULE));
 });

@@ -198,6 +198,7 @@ test('credits config defaults', () => {
     minChars: 3,
     announceLevelUp: true,
     flushMs: 2000,
+    mentionChance: 0.15,
   });
 });
 
@@ -336,4 +337,24 @@ test('no zero-weight warning when modes are switched off deliberately', () => {
 // suite; a missing mood block must not throw.
 test('startupWarnings tolerates a config with no mood block', () => {
   assert.deepEqual(startupWarnings({ discord: { allowedChannels: ['123'] } }), []);
+});
+
+test('the unprompted ledger chance defaults low', () => {
+  assert.equal(loadConfig(valid).credits.mentionChance, 0.15);
+});
+
+test('the unprompted ledger chance can be set', () => {
+  assert.equal(loadConfig({ ...valid, CREDITS_MENTION_CHANCE: '0' }).credits.mentionChance, 0);
+  assert.equal(loadConfig({ ...valid, CREDITS_MENTION_CHANCE: '1' }).credits.mentionChance, 1);
+});
+
+test('an out-of-range ledger chance is rejected', () => {
+  assert.throws(
+    () => loadConfig({ ...valid, CREDITS_MENTION_CHANCE: '1.5' }),
+    /CREDITS_MENTION_CHANCE must be between 0 and 1/,
+  );
+  assert.throws(
+    () => loadConfig({ ...valid, CREDITS_MENTION_CHANCE: '-0.1' }),
+    /CREDITS_MENTION_CHANCE must be between 0 and 1/,
+  );
 });
