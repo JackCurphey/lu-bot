@@ -1,10 +1,10 @@
 // test/store.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { saveCorpus, loadCorpus, search } from '../src/corpus/store.js';
+import { saveCorpus, loadCorpus, search, mergeCorpora, toRecords, removeChunksBySource } from '../src/corpus/store.js';
 
 const source = { title: 'T', author: 'A', chapter: '1' };
 
@@ -66,5 +66,73 @@ test('search respects k', async () => {
     ]);
     const corpus = await loadCorpus(dir);
     assert.equal(search(corpus, [1, 0], 1).length, 1);
+  });
+});
+
+const rec = (text, title, vector) => ({ text, index: 0, source: { title, author: 'a', chapter: null }, vector });
+
+test('two corpora merge into one searchable corpus', async () => {
+  await withTempDir(async (dir) => {
+    await saveCorpus(join(dir, 'a'), [rec('one', 'A', new Float32Array([1, 0]))]);
+    await saveCorpus(join(dir, 'b'), [rec('two', 'B', new Float32Array([0, 1]))]);
+
+    const merged = mergeCorpora(await loadCorpus(join(dir, 'a')), await loadCorpus(join(dir, 'b')));
+    assert.equal(merged.size, 2);
+    assert.equal(merged.dim, 2);
+    assert.equal(search(merged, new Float32Array([0, 1]), 1)[0].chunk.text, 'two');
+  });
+});
+
+test('merging an empty corpus changes nothing', async () => {
+  await withTempDir(async (dir) => {
+    await saveCorpus(join(dir, 'a'), [rec('one', 'A', new Float32Array([1, 0]))]);
+    const a = await loadCorpus(join(dir, 'a'));
+    const empty = await loadCorpus(join(dir, 'missing'));
+    assert.equal(mergeCorpora(a, empty).size, 1);
+    assert.equal(mergeCorpora(empty, a).size, 1);
+  });
+});
+
+test('merging corpora embedded at different dimensions throws rather than corrupting', async () => {
+  await withTempDir(async (dir) => {
+    await saveCorpus(join(dir, 'a'), [rec('one', 'A', new Float32Array([1, 0]))]);
+    await saveCorpus(join(dir, 'b'), [rec('two', 'B', new Float32Array([0, 1, 0]))]);
+    const a = await loadCorpus(join(dir, 'a'));
+    const b = await loadCorpus(join(dir, 'b'));
+    assert.throws(() => mergeCorpora(a, b), /dimension/i);
+  });
+});
+
+test('a corpus round-trips through toRecords back into saveCorpus', async () => {
+  await withTempDir(async (dir) => {
+    const original = [rec('one', 'A', new Float32Array([1, 0])), rec('two', 'B', new Float32Array([0, 1]))];
+    await saveCorpus(join(dir, 'a'), original);
+    const records = toRecords(await loadCorpus(join(dir, 'a')));
+    assert.equal(records.length, 2);
+    assert.deepEqual([...records[1].vector], [0, 1]);
+
+    await saveCorpus(join(dir, 'b'), records);
+    assert.equal((await loadCorpus(join(dir, 'b'))).size, 2);
+  });
+});
+
+test('removing a source drops its chunks and reindexes the rest', () => {
+  const records = [
+    rec('one', 'Keep', new Float32Array([1, 0])),
+    rec('two', 'Drop', new Float32Array([0, 1])),
+    rec('three', 'Keep', new Float32Array([1, 1])),
+  ];
+  const { records: left, removed } = removeChunksBySource(records, 'drop');
+  assert.equal(removed, 1);
+  assert.deepEqual(left.map((r) => r.text), ['one', 'three']);
+  assert.deepEqual(left.map((r) => r.index), [0, 1]);
+});
+
+test('a save leaves no temp files behind', async () => {
+  await withTempDir(async (dir) => {
+    const target = join(dir, 'a');
+    await saveCorpus(target, [rec('one', 'A', new Float32Array([1, 0]))]);
+    const left = await readdir(target);
+    assert.deepEqual(left.sort(), ['chunks.json', 'vectors.bin']);
   });
 });

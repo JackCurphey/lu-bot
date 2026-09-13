@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rename, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const VECTORS = 'vectors.bin';
@@ -19,8 +19,22 @@ export async function saveCorpus(dir, records) {
   });
 
   const chunks = records.map(({ text, index, source }) => ({ text, index, source }));
-  await writeFile(join(dir, VECTORS), Buffer.from(flat.buffer));
-  await writeFile(join(dir, CHUNKS), JSON.stringify({ dim, chunks }, null, 2));
+  // Written to temp files and renamed, because this is now called at runtime
+  // (src/corpus/library.js) and not only by scripts/ingest.js. A crash partway
+  // through a direct write leaves a truncated vectors.bin that loadCorpus will
+  // read as a corpus of garbage vectors, with nothing to signal it.
+  //
+  // The two renames are not atomic *with each other*. Vectors go first: a
+  // crash in the gap leaves the previous chunks.json with the new vectors,
+  // and since loadCorpus sizes the corpus by chunks.length, an append
+  // degrades to "the new chunks are not visible yet" rather than to
+  // misalignment. A removal crashing in that gap can misalign text and
+  // vectors until the next successful write; the window is two renames wide
+  // and the repair is to re-run the removal.
+  await writeFile(join(dir, `${VECTORS}.tmp`), Buffer.from(flat.buffer));
+  await writeFile(join(dir, `${CHUNKS}.tmp`), JSON.stringify({ dim, chunks }, null, 2));
+  await rename(join(dir, `${VECTORS}.tmp`), join(dir, VECTORS));
+  await rename(join(dir, `${CHUNKS}.tmp`), join(dir, CHUNKS));
 }
 
 export async function loadCorpus(dir) {
@@ -64,4 +78,48 @@ export function search(corpus, queryVector, k = 5) {
   }
 
   return scored.sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+// The in-memory corpus is a flat Float32Array plus a parallel chunk list, so
+// merging is two concatenations. Kept here rather than in library.js so
+// everything that knows the storage layout stays in one file.
+export function mergeCorpora(a, b) {
+  if (a.size === 0) return b;
+  if (b.size === 0) return a;
+  if (a.dim !== b.dim) {
+    throw new Error(
+      `Corpus dimension mismatch: ${a.dim} and ${b.dim}. ` +
+      'One of these was embedded with a different model than the other.',
+    );
+  }
+  const vectors = new Float32Array(a.vectors.length + b.vectors.length);
+  vectors.set(a.vectors, 0);
+  vectors.set(b.vectors, a.vectors.length);
+  return {
+    chunks: [...a.chunks, ...b.chunks],
+    vectors,
+    dim: a.dim,
+    size: a.size + b.size,
+  };
+}
+
+// The inverse of what saveCorpus consumes, so a loaded corpus can be edited
+// and written back without a second trip through the embedding model.
+export function toRecords(corpus) {
+  return corpus.chunks.map((chunk, i) => ({
+    ...chunk,
+    vector: corpus.vectors.slice(i * corpus.dim, (i + 1) * corpus.dim),
+  }));
+}
+
+// Title match is case-insensitive and exact. A substring match would let
+// "lu forget capital" take out "Capital, Volume I" and "The Capital Levy"
+// together, and the caller cannot tell afterwards what it lost.
+export function removeChunksBySource(records, title) {
+  const wanted = String(title).trim().toLowerCase();
+  const left = records.filter((r) => (r.source?.title ?? '').toLowerCase() !== wanted);
+  return {
+    records: left.map((r, i) => ({ ...r, index: i })),
+    removed: records.length - left.length,
+  };
 }
