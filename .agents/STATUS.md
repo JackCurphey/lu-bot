@@ -1,5 +1,64 @@
 # Lu Bot — status
 
+> **2026-09-13: mischief modes are built and tested on the MacBook only —
+> not deployed, not started, not live-checked.**
+>
+> Branch `feat/mischief-modes`, off `main`. **Pushed and in sync with
+> `origin/feat/mischief-modes` at `9f6f5b9`.** No pull request opened.
+>
+> Lu now picks one of four modes per reply — gossip, needler, narrator,
+> windup — and commits to it. The fragments and the weighted picker live in
+> `src/mood.js`; the chosen fragment joins the same `instructions[]` array in
+> `src/conversation.js` as the nickname and credits fragments, and the choice
+> is written to the decision log so `lu explain` says which Lu answered.
+>
+> **Why selection is in code, not in the prompt.** A prompt that describes
+> four personalities produces the average of them, which is the flat register
+> this work exists to fix. Picking one in code means the model never sees the
+> other three and has nothing to hedge against. It also makes the weights
+> tunable from `.env` without a deploy and keeps selection deterministic
+> under test.
+>
+> Weights default to gossip 35, needler 30, narrator 20, windup 15
+> (`MOOD_WEIGHT_*`, relative not percentages). Windup is deliberately the
+> smallest share: it ages fastest and starts real arguments. `MOOD_ENABLED`
+> is the master switch. All of it is `.env`, so re-tuning is a restart, not a
+> deploy.
+>
+> `persona/lu-bot.md`'s head section is rewritten — the old text called Lu
+> "mischievous and evil" and then spent the rest of its length forbidding him
+> the room to be either. The length cap went from forty-to-sixty words to
+> roughly seventy so a setup and a turn both fit. The corpus paragraph and
+> the quoting rules are untouched; the quote verifier depends on them.
+> `test/persona.test.js` pins the whole file exactly, so the rewrite is a
+> visible, deliberate change there.
+>
+> **Suite: 477 tests, 477 pass, 0 fail** on the MacBook (451 before this
+> work). Every new test was watched failing first, and four mutations of the
+> production code confirmed the tests bite: stripping the shared rules from
+> `moodInstruction` killed the shared-rules test with the right message,
+> reversing `MODE_IDS` killed five order and band tests, forcing selection
+> off killed the four wiring tests, and removing the decision-log line killed
+> only the `lu explain` test. Each mutation's diff was printed before its run
+> to prove the edit landed.
+>
+> **Nothing off-limits was configured** — the user was asked and said none
+> for now. When one is wanted it is a sentence appended to
+> `SHARED_MODE_RULES` in `src/mood.js`, which reaches all four modes at once;
+> a test fails if any mode stops carrying that constant.
+>
+> **Not checked at all:** whether he is actually funnier. That is not
+> unit-testable and needs him running in the real server. Also unchecked
+> live: whether modes firing on random chime-ins read as funny or unhinged
+> (gossip names people and drags others in, and a chime-in that stirs
+> between two people who were not talking is the first thing to watch for —
+> the 2% chime rate makes it rare, not impossible), whether windup at 15% is
+> still too much, and whether ~70 words gives the narrator room to land.
+>
+> **Next action for the user:** deploy to the mini, watch an evening of real
+> conversation, and re-tune `MOOD_WEIGHT_*` from what actually lands. Then
+> decide whether this merges to `main`.
+
 > **2026-09-13: Imperial Credits is built and reviewed on the MacBook only —
 > not deployed, not started, not live-checked.**
 >
