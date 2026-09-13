@@ -27,19 +27,20 @@
 > work was 350 (the stale 167 figure quoted lower in this file predates the
 > stage 1 merge and has now been corrected there too).
 >
-> **What is NOT verified — read this before deploying.** The bot has never
-> been started; no connection to Discord has been made at any point in this
-> work. Nothing has run on the Mac mini. No credit has been earned in a real
-> channel, no command has been typed in Discord, no level-up has been seen
-> live. Above all, **the restart-and-check-the-balance test has not been
-> performed** — persistence is the only genuinely new capability this work
-> adds, and it is verified by unit tests against the store and by reading the
-> write path's code, not by starting the real bot, letting it write a real
-> balance, killing it, and confirming the number survives. This was a
-> deliberate ruling, not an oversight: starting the bot signs into a live
-> server other people are in, and that is an outward-facing action reserved
-> for a human, not something taken on the controller's own authority
-> mid-implementation.
+> **Deployed and live-checked, 2026-09-13.** Running on the mini at
+> `spec/imperial-credits` merged into `main`, plus the server allowlist.
+> Verified in the real server: credits earned from ordinary conversation
+> (159 over 7 messages), the 30-second cooldown holding, level 1 crossed
+> with the announcement firing in the channel, and the balance surviving a
+> token rotation, seven crash-loop restarts, a clean restart, and a full
+> physical power-down and move to another room. The restart-and-check test
+> that this file previously listed as outstanding is done.
+>
+> **Still not checked live:** a message under the three-character minimum
+> earning nothing, the leaderboard with more than one member in it, and the
+> two fault-injection cases (corrupt the ledger file and confirm it refuses
+> to start; move it away and confirm a clean start). Full detail, including
+> what was and was not proven and how, is in the verification document.
 >
 > Two real defects were found only by reviewing the whole branch at once,
 > after every individual task had already passed its own review — see the
