@@ -17,6 +17,9 @@ export function totalToReach(n) {
 // the cost is irrelevant. A closed form would be one algebra slip away from
 // silently misreporting everyone's level.
 export function levelFor(credits) {
+  // NaN-safe form: `!(credits > 0)` also catches credits being NaN (where
+  // both `credits > 0` and `credits <= 0` would be false), unlike
+  // `credits <= 0`. Left as-is by design, not an oversight.
   if (!(credits > 0)) return 0;
   let level = 0;
   let total = 0;
