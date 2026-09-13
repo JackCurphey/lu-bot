@@ -9,6 +9,7 @@ import { awardForMessage } from './credits/earn.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
+  CREDITS_DISABLED,
 } from './credits/commands.js';
 
 // validateNickname's failure reasons that have a matching in-character line.
@@ -321,6 +322,16 @@ export function createConversation({
     if (explain) {
       const rec = decisions.find(entry.channelId, explain[1]);
       await safeSend(state, rec ? formatDecision(rec) : NOT_FOUND);
+      return;
+    }
+
+    // With the ledger switched off, a credits/leaderboard command is no
+    // longer recognised below and would otherwise reach the model with no
+    // creditsInstruction to anchor it, free to invent a balance -- forbidden
+    // by the spec. Answered deterministically instead (F7).
+    if (config.credits && !config.credits.enabled && !entry.isBot
+      && (LEADERBOARD_RE.test(entry.text) || isCreditsCommand(entry))) {
+      await safeSend(state, CREDITS_DISABLED);
       return;
     }
 

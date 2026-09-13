@@ -28,6 +28,12 @@ export function isCreditsCommand(entry) {
 
 export const EMPTY_LEADERBOARD = 'the ledger is empty. nobody has earned anything yet.';
 
+// With credits configured but switched off, a credits/leaderboard command
+// would otherwise reach the model with no creditsInstruction to anchor it,
+// free to invent a balance. The spec forbids fabricated user-facing values
+// (F7), so this answers deterministically instead of letting it through.
+export const CREDITS_DISABLED = 'the imperial ledger is switched off.';
+
 const n = (x) => x.toLocaleString('en-GB');
 
 // Lu included: "lu credits @Lu" asks about Lu, and answering about the asker

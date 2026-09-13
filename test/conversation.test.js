@@ -5,6 +5,7 @@ import { createHistory } from '../src/history.js';
 import { createDecisionLog, NOT_FOUND } from '../src/decisions.js';
 import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 import { respondWithReason } from '../src/responder.js';
+import { CREDITS_DISABLED } from '../src/credits/commands.js';
 
 const config = {
   trigger: {
@@ -676,6 +677,32 @@ test('level-up announcements can be turned off', async () => {
   await s.conversation.handleMessage(msg({ text: 'hello comrades', authorId: 'u1', name: 'Bob' }), s.io);
   assert.ok(!s.sent.some((t) => /reaches level/.test(t)));
   assert.equal(store.get('u1').credits, 115);
+});
+
+// --- F7: a disabled ledger must not let the model invent a balance ---
+// With credits configured but switched off, "lu credits" is no longer
+// recognised as a command and would otherwise reach the model with no
+// creditsInstruction to anchor it -- free to fabricate a number. The spec
+// forbids fabricated user-facing values.
+
+test('F7: asking for your balance with the ledger disabled gets the fixed line, not the model', async () => {
+  const s = setup({ credits: null, config: { ...config, credits: { ...creditsConfig, enabled: false } } });
+  await s.conversation.handleMessage(msg({ text: 'lu credits', authorId: 'u1' }), s.io);
+  assert.deepEqual(s.sent, [CREDITS_DISABLED]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('F7: the leaderboard command with the ledger disabled gets the fixed line, not the model', async () => {
+  const s = setup({ credits: null, config: { ...config, credits: { ...creditsConfig, enabled: false } } });
+  await s.conversation.handleMessage(msg({ text: 'lu leaderboard', authorId: 'u1' }), s.io);
+  assert.deepEqual(s.sent, [CREDITS_DISABLED]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('F7: with no credits config at all, the commands are unaffected', async () => {
+  const s = setup({});
+  await say(s, msg({ text: 'lu credits', mentionsLu: true, authorId: 'u1' }));
+  assert.ok(!s.sent.includes(CREDITS_DISABLED));
 });
 
 // Roughly 390 tests predate this feature and build config objects with no
