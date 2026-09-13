@@ -263,6 +263,27 @@ test('Lu is listed among the mentions like anyone else', () => {
   assert.deepEqual(entry.mentions, [{ id: 'bot', name: 'Lu' }]);
 });
 
+// Every test above uses a single-element mentionedUsers array, so an
+// implementation that reversed the array, sorted it, or filtered Lu out
+// would still pass all of them. This pins both properties at once with a
+// three-entry array, Lu in the middle, asserted with one deepEqual over the
+// whole list.
+test('mentions preserve Discord order and keep Lu in the middle', () => {
+  const entry = toEntry(view({
+    content: '<@1> <@bot> <@2> hello',
+    mentionedUsers: [
+      { id: '1', displayName: 'Alice' },
+      { id: 'bot', displayName: 'Lu' },
+      { id: '2', displayName: 'Carl' },
+    ],
+  }), { botId: 'bot' });
+  assert.deepEqual(entry.mentions, [
+    { id: '1', name: 'Alice' },
+    { id: 'bot', name: 'Lu' },
+    { id: '2', name: 'Carl' },
+  ]);
+});
+
 // Carried so downstream code can tell which mention is Lu. The alternative
 // was threading botId through createConversation, which every other consumer
 // would have had to accept and ignore.
