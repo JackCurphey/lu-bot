@@ -1,5 +1,35 @@
 # Lu Bot — status
 
+> **2026-09-17: Lu replies to the message instead of giving a speech.
+> Deployed from branch `fix/lu-answers-the-message` (`0ee834d`), not yet
+> merged to `main`. Not yet watched in real conversation.**
+>
+> Reported from live use: he sounded Maoist but every reply was a lecture
+> unrelated to what was said. Cause was the persona and the shared mode
+> rules, not the model: "answer the question next to the one you were
+> asked", a phrase list he recited verbatim, a seventy-word allowance, and
+> "the frame is class, contradiction and struggle" on every mode. The head of
+> `persona/lu-bot.md` now anchors each reply to the specific thing said,
+> caps it at two sentences / about forty words, and stops "comrade" opening
+> every line; `SHARED_MODE_RULES`, narrator and windup point at the message.
+>
+> Measured with 5 scenarios x 4 modes against the mini's `qwen3:4b-instruct`
+> using the real prompt builder: before, 73 words average and 17/20
+> multi-paragraph lectures; after, 38 words and on-topic. Suite 492/492 on
+> the MacBook and on the mini. The mini (2018 Intel i3, 16GB, no usable GPU)
+> writes about 11 tokens/s on the 4B model; an 8B is the largest usable,
+> mixture-of-experts models do not fit.
+>
+> Deployed 11:54 same shape as below: backup
+> `lu-bot-backup-7504039-20260917-115431.tar.gz`, rsync from `git ls-files`,
+> no `--delete`, marker, kickstart. PID 25685, `Lu Bot is online`, ledger 11
+> members.
+>
+> **Open, found while testing:** (1) with no passages (the mini has no
+> corpus, so every reply) `checkQuoteLength` lets an invented, quoted Mao line
+> through; (2) he sometimes brings up the credits ledger unprompted (0-4 of
+> 20 per run).
+
 > **2026-09-13 (later): the ledger no longer crowds every reply, and the
 > politics are back in the modes. Merged, deployed, running — not yet watched
 > in real conversation.**
