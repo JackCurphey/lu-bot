@@ -7,6 +7,7 @@ import { NICKNAME_INSTRUCTION, NICKNAME_LINES } from '../src/nickname.js';
 import { respondWithReason } from '../src/responder.js';
 import { CREDITS_DISABLED, CREDITS_STANDING_RULE } from '../src/credits/commands.js';
 import { MODE_IDS, moodInstruction } from '../src/mood.js';
+import { RENAME_LINES } from '../src/rename.js';
 
 const config = {
   trigger: {
@@ -50,11 +51,11 @@ function msg(over = {}) {
 }
 const luSaid = (text = 'the state is a tool') => msg({ authorId: 'lu', name: 'Lu', isLu: true, isBot: true, text });
 
-function setup({ applyNickname, send, ...over } = {}) {
+function setup({ applyNickname, send, renameMember, findMembers, ...over } = {}) {
   const timers = fakeTimers();
   const history = createHistory({ limit: 20, trimTo: 10 });
   const decisions = createDecisionLog();
-  const calls = { respond: [], judge: [], applyNickname: [] };
+  const calls = { respond: [], judge: [], applyNickname: [], renameMember: [], findMembers: [], order: [] };
   const sent = [];
   let typingStarts = 0; let typingStops = 0;
   const io = {
@@ -71,11 +72,20 @@ function setup({ applyNickname, send, ...over } = {}) {
       calls.applyNickname.push(name);
       return applyNickname ? applyNickname(name) : { ok: true };
     },
+    async renameMember(id, name) {
+      calls.renameMember.push([id, name]);
+      calls.order.push('rename');
+      return renameMember ? renameMember(id, name) : { ok: true };
+    },
+    async findMembers(typed) {
+      calls.findMembers.push(typed);
+      return findMembers ? findMembers(typed) : [];
+    },
   };
   const conversation = createConversation({
     config, history, decisions, persona: 'P', llm: {},
     chooseChunks: async () => [],
-    respondWithReason: async (args) => { calls.respond.push(args); return { ok: true, reply: 'wot' }; },
+    respondWithReason: async (args) => { calls.respond.push(args); calls.order.push('respond'); return { ok: true, reply: 'wot' }; },
     isAddressed: async ({ entries }) => { calls.judge.push(entries); return { yes: true, reason: '' }; },
     now: () => T0,
     random: () => 0.99,
@@ -962,4 +972,138 @@ test('no ledger instruction of any kind when credits are switched off', async ()
   });
   await said(s, '@Lu how many credits do i have');
   assert.ok(!(extra(s) ?? '').includes(CREDITS_STANDING_RULE));
+});
+
+// --- Renaming other members ----------------------------------------------------------
+
+const asker = (text, over = {}) => msg({
+  authorId: 'u-jack', name: 'jack', mentionsLu: true, text: `@Lu ${text}`,
+  mentions: [{ id: 'u-sam', name: 'sam' }], ...over,
+});
+const reasons = (s, m) => s.decisions.find('chan', m.messageId).reasons;
+
+test('a named rename of an @mentioned member happens before the reply, which is told it happened', async () => {
+  const s = setup();
+  const m = asker('rename @sam to potato');
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, [['u-sam', 'potato']]);
+  assert.deepEqual(s.calls.order, ['rename', 'respond']);
+  assert.match(s.calls.respond[0].extraInstruction, /sam/);
+  assert.match(s.calls.respond[0].extraInstruction, /"potato"/);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, ['wot']);
+  assert.ok(reasons(s, m).includes('renamed sam to "potato"'));
+});
+
+test('someone without Manage Nicknames cannot have a member renamed', async () => {
+  const s = setup();
+  const m = asker('rename @sam to potato', { authorCanManageNicknames: false });
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, [`wot\n\n${NICKNAME_LINES.noPermission}`]);
+  assert.doesNotMatch(s.calls.respond[0].extraInstruction ?? '', /potato/);
+});
+
+test('a typed name is found among recent speakers', async () => {
+  const s = setup();
+  await say(s, msg({ authorId: 'u-dave', name: 'Dave', text: 'evening all' }));
+  const m = asker('rename dave to the waverer', { mentions: [] });
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, [['u-dave', 'the waverer']]);
+});
+
+test('a typed name is found through the member search', async () => {
+  const s = setup({ findMembers: async () => [{ id: 'u-dave', name: 'dave' }] });
+  await say(s, asker('rename dave to the waverer', { mentions: [] }));
+  assert.deepEqual(s.calls.findMembers, ['dave']);
+  assert.deepEqual(s.calls.renameMember, [['u-dave', 'the waverer']]);
+});
+
+test('a typed name matching two people renames nobody and asks for a mention', async () => {
+  const s = setup({ findMembers: async () => [{ id: 'd1', name: 'dave' }, { id: 'd2', name: 'Dave' }] });
+  await say(s, asker('rename dave to x', { mentions: [] }));
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, [`wot\n\n${RENAME_LINES.targetAmbiguous('dave')}`]);
+});
+
+test('the same person found twice is still one person', async () => {
+  const s = setup({ findMembers: async () => [{ id: 'u-dave', name: 'dave' }] });
+  await say(s, msg({ authorId: 'u-dave', name: 'dave', text: 'hi' }));
+  await say(s, asker('rename dave to x', { mentions: [] }));
+  assert.deepEqual(s.calls.renameMember, [['u-dave', 'x']]);
+});
+
+test('a typed name nobody has renames nobody and asks for a mention', async () => {
+  const s = setup();
+  const m = asker('rename dave to x', { mentions: [] });
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, [`wot\n\n${RENAME_LINES.targetUnknown('dave')}`]);
+});
+
+test('a failed member search falls back to recent speakers and is logged', async () => {
+  const s = setup({ findMembers: async () => { throw new Error('Missing Access'); } });
+  await say(s, msg({ authorId: 'u-dave', name: 'dave', text: 'hi' }));
+  const m = asker('rename dave to x', { mentions: [] });
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, [['u-dave', 'x']]);
+  assert.ok(reasons(s, m).some((r) => r.includes('member search failed') && r.includes('Missing Access')));
+});
+
+test('with no name given, Lu picks one with the marker and it goes to the member, not to Lu', async () => {
+  const s = setup({
+    respondWithReason: async (args) => { s.calls.respond.push(args); return { ok: true, reply: 'behold\nNICKNAME: Potato Head' }; },
+  });
+  const m = asker('give @sam a new name');
+  await say(s, m);
+  assert.match(s.calls.respond[0].extraInstruction, /NICKNAME:/);
+  assert.match(s.calls.respond[0].extraInstruction, /sam/);
+  assert.deepEqual(s.calls.renameMember, [['u-sam', 'Potato Head']]);
+  assert.deepEqual(s.calls.applyNickname, []);
+  assert.deepEqual(s.sent, ['behold']);
+  assert.ok(reasons(s, m).includes('renamed sam to "Potato Head"'));
+});
+
+test('with no name given and no marker back, nobody is renamed and the log says why', async () => {
+  const s = setup();
+  const m = asker('give @sam a new name');
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.ok(reasons(s, m).includes('asked to rename sam but no NICKNAME line came back'));
+});
+
+test('a member who outranks Lu gets the outranked line', async () => {
+  const s = setup({ renameMember: async () => ({ ok: false, reason: 'outranked' }) });
+  await say(s, asker('rename @sam to potato'));
+  assert.deepEqual(s.sent, [`wot\n\n${RENAME_LINES.outranked('sam')}`]);
+  assert.doesNotMatch(s.calls.respond[0].extraInstruction ?? '', /potato/);
+});
+
+test('a name that is too long renames nobody', async () => {
+  const s = setup();
+  await say(s, asker(`rename @sam to ${'x'.repeat(40)}`));
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, [`wot\n\n${RENAME_LINES.tooLong('sam')}`]);
+});
+
+test("resetting a member's name clears their nickname", async () => {
+  const s = setup();
+  const m = asker("reset @sam's name");
+  await say(s, m);
+  assert.deepEqual(s.calls.renameMember, [['u-sam', null]]);
+  assert.ok(reasons(s, m).includes('reset the name of sam'));
+});
+
+test('renaming Lu by name goes through his own nickname', async () => {
+  const s = setup();
+  await say(s, asker('rename @Lu to chairman'));
+  assert.deepEqual(s.calls.applyNickname, ['chairman']);
+  assert.deepEqual(s.calls.renameMember, []);
+});
+
+test('member renames are off when nicknames are switched off', async () => {
+  const s = setup({ config: { ...config, nickname: { enabled: false, requirePermission: true } } });
+  await say(s, asker('rename @sam to potato'));
+  assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, ['wot']);
 });

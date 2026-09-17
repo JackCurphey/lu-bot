@@ -180,6 +180,63 @@ test('createChannelIo.applyNickname reports notInGuild when the channel has no g
   assert.deepEqual(out, { ok: false, reason: 'notInGuild' });
 });
 
+function guildWith(members, { search } = {}) {
+  return {
+    guild: {
+      members: {
+        async fetch(id) {
+          if (!members[id]) throw new Error('Unknown Member');
+          return members[id];
+        },
+        search: search ?? (async () => new Map()),
+      },
+    },
+  };
+}
+
+test('createChannelIo.renameMember sets that member\'s nickname', async () => {
+  const calls = [];
+  const channel = guildWith({ sam: { manageable: true, async setNickname(n) { calls.push(n); } } });
+  assert.deepEqual(await createChannelIo(channel).renameMember('sam', 'potato'), { ok: true });
+  assert.deepEqual(await createChannelIo(channel).renameMember('sam', null), { ok: true });
+  assert.deepEqual(calls, ['potato', null]);
+});
+
+test('createChannelIo.renameMember will not try on someone who outranks Lu', async () => {
+  const calls = [];
+  const channel = guildWith({ boss: { manageable: false, async setNickname(n) { calls.push(n); } } });
+  assert.deepEqual(await createChannelIo(channel).renameMember('boss', 'x'), { ok: false, reason: 'outranked' });
+  assert.deepEqual(calls, []);
+});
+
+test('createChannelIo.renameMember reports refused when Discord rejects it or the member is gone', async () => {
+  const channel = guildWith({ sam: { manageable: true, async setNickname() { throw new Error('Missing Permissions'); } } });
+  assert.deepEqual(await createChannelIo(channel).renameMember('sam', 'x'), { ok: false, reason: 'refused' });
+  assert.deepEqual(await createChannelIo(channel).renameMember('nobody', 'x'), { ok: false, reason: 'refused' });
+});
+
+test('createChannelIo.renameMember reports notInGuild outside a server', async () => {
+  assert.deepEqual(await createChannelIo({}).renameMember('sam', 'x'), { ok: false, reason: 'notInGuild' });
+});
+
+test('createChannelIo.findMembers keeps only exact name matches from the search', async () => {
+  const queries = [];
+  const found = new Map([
+    ['d1', { id: 'd1', displayName: 'dave', nickname: null, user: { username: 'dave_x', globalName: null } }],
+    ['d2', { id: 'd2', displayName: 'davey', nickname: null, user: { username: 'davey', globalName: 'Davey' } }],
+    ['d3', { id: 'd3', displayName: 'Rave', nickname: 'Rave', user: { username: 'r', globalName: 'Dave' } }],
+  ]);
+  const channel = guildWith({}, { search: async (opts) => { queries.push(opts); return found; } });
+  assert.deepEqual(await createChannelIo(channel).findMembers('Dave'), [
+    { id: 'd1', name: 'dave' }, { id: 'd3', name: 'Rave' },
+  ]);
+  assert.equal(queries[0].query, 'Dave');
+});
+
+test('createChannelIo.findMembers finds nobody outside a server', async () => {
+  assert.deepEqual(await createChannelIo({}).findMembers('dave'), []);
+});
+
 // --- Whole-branch review, finding F: Discord's 2000-character reply limit ---
 //
 // message.reply() throws DiscordAPIError[50035] over 2000 characters. That

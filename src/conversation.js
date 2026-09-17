@@ -8,6 +8,9 @@ import { NICKNAME_REQUEST_RE, NICKNAME_RESET_RE, NICKNAME_INSTRUCTION, extractNi
 import { awardForMessage } from './credits/earn.js';
 import { pickMode, moodInstruction } from './mood.js';
 import {
+  parseMemberRename, matchesMemberName, RENAME_LINES, memberRenamedInstruction, pickNameInstruction,
+} from './rename.js';
+import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
   CREDITS_DISABLED, CREDITS_STANDING_RULE, mentionsLedger,
@@ -92,6 +95,44 @@ export function createConversation({
       : { prior: entries.slice(0, i), upTo: entries.slice(0, i + 1) };
   }
 
+  // Who a member rename is aimed at. A typed name is looked up among recent
+  // speakers and through Discord's member search; exactly one person must
+  // match, or nobody is renamed. Returns { id, name } or { line, reason }.
+  async function findRenameTarget(channelId, entry, target, io) {
+    if (target.id) return target;
+    const typed = target.typed;
+    const found = new Map();
+    for (const e of history.entries(channelId)) {
+      if (!e.isLu && matchesMemberName({ displayName: e.name }, typed)) found.set(e.authorId, e.name);
+    }
+    let searchNote = null;
+    try {
+      for (const m of await io.findMembers(typed)) found.set(m.id, m.name);
+    } catch (err) {
+      searchNote = `member search failed (${err.message}); used recent speakers only`;
+    }
+    if (found.size === 1) {
+      const [[id, name]] = found;
+      return { id, name, searchNote };
+    }
+    return found.size === 0
+      ? { line: RENAME_LINES.targetUnknown(typed), reason: `rename refused: nobody called ${typed}`, searchNote }
+      : { line: RENAME_LINES.targetAmbiguous(typed), reason: `rename refused: ${found.size} people called ${typed}`, searchNote };
+  }
+
+  // Lu is renamed through his own nickname; anyone else through the member API.
+  // The status line for a failure is worded for whichever it was.
+  async function renameTo(io, entry, who, name) {
+    const outcome = who.id === entry.luId
+      ? await io.applyNickname(name)
+      : await io.renameMember(who.id, name);
+    if (outcome.ok) return { ok: true };
+    const line = who.id === entry.luId
+      ? NICKNAME_LINES[outcome.reason] ?? null
+      : RENAME_LINES[outcome.reason]?.(who.name) ?? NICKNAME_LINES[outcome.reason] ?? null;
+    return { ok: false, line, reason: `rename of ${who.name} failed: ${outcome.reason}` };
+  }
+
   // A direct mention outranks an unjudged message: only "judge" and "chime"
   // jobs can be bumped by a later arrival, never a pending "direct" one.
   function priority(kind) {
@@ -165,6 +206,15 @@ export function createConversation({
       // — it is handled directly below, and (per the comment on
       // NICKNAME_RESET_RE) never needs the instruction injected.
       const asksReset = config.nickname.enabled && NICKNAME_RESET_RE.test(entry.text);
+      const memberRename = config.nickname.enabled && !asksRename
+        ? parseMemberRename(entry.text, {
+          mentions: entry.mentions ?? [], authorId: entry.authorId, authorName: entry.name, luId: entry.luId,
+        })
+        : null;
+      // Set before the reply when a member rename was refused or failed.
+      let renameStatus = null;
+      // The member waiting for Lu to choose their name with a NICKNAME line.
+      let renamePick = null;
       let result;
       try {
         const { prior } = split(channelId, entry);
@@ -186,6 +236,45 @@ export function createConversation({
           rec?.reasons.push(`mode: ${mode}`);
         }
         if (asksRename && !asksReset) instructions.push(NICKNAME_INSTRUCTION);
+        // Someone else's name (see src/rename.js). A given name, or a reset,
+        // is applied before the reply so Lu reacts to what really happened;
+        // with no name he chooses one, and it is applied after.
+        if (memberRename) {
+          const refusal = nicknameRefusal(entry, config);
+          const who = refusal ? null : await findRenameTarget(channelId, entry, memberRename.target, state.io);
+          if (who?.searchNote) rec?.reasons.push(who.searchNote);
+          if (refusal) {
+            renameStatus = refusal.statusLine;
+            rec?.reasons.push(refusal.reason);
+          } else if (who.line) {
+            renameStatus = who.line;
+            rec?.reasons.push(who.reason);
+          } else if (!memberRename.reset && memberRename.name === null) {
+            renamePick = who;
+            instructions.push(pickNameInstruction({ asker: entry.name, who: who.name }));
+          } else {
+            let name = null;
+            if (!memberRename.reset) {
+              const validation = validateNickname(memberRename.name);
+              if (validation.ok) {
+                name = validation.name;
+              } else {
+                renameStatus = RENAME_LINES[VALIDATION_LINES[validation.reason]]?.(who.name) ?? null;
+                rec?.reasons.push(`rename refused: ${validation.reason}`);
+              }
+            }
+            if (memberRename.reset || name !== null) {
+              const outcome = await renameTo(state.io, entry, who, name);
+              if (outcome.ok) {
+                rec?.reasons.push(name === null ? `reset the name of ${who.name}` : `renamed ${who.name} to "${name}"`);
+                instructions.push(memberRenamedInstruction({ asker: entry.name, who: who.name, name }));
+              } else {
+                renameStatus = outcome.line;
+                rec?.reasons.push(outcome.reason);
+              }
+            }
+          }
+        }
         // The standing rule is always here while credits are on; the balance
         // itself only when someone has raised the subject, or on an occasional
         // unprompted roll. Injecting the balance every time is what made Lu
@@ -232,7 +321,7 @@ export function createConversation({
       // The marker never reaches Discord, whatever else happens to it — strip
       // it before any of the outcomes below, none of which post it back.
       const { text: strippedText, request } = extractNickname(result.reply);
-      let statusLine = null;
+      let statusLine = renameStatus;
       let renameSucceeded = false;
       if (asksReset) {
         // Deterministic path: no marker was ever expected here (the
@@ -263,6 +352,22 @@ export function createConversation({
         // should say the model never sent one back — "lu explain" otherwise
         // has nothing to point to for a rename that silently never happened.
         if (asksRename) rec?.reasons.push('asked for a rename but no NICKNAME line came back');
+        if (renamePick) rec?.reasons.push(`asked to rename ${renamePick.name} but no NICKNAME line came back`);
+      } else if (renamePick) {
+        const validation = request.reset ? { ok: false, reason: 'reset' } : validateNickname(request.name);
+        if (!validation.ok) {
+          statusLine = RENAME_LINES[VALIDATION_LINES[validation.reason]]?.(renamePick.name) ?? null;
+          rec?.reasons.push(`rename refused: ${validation.reason}`);
+        } else {
+          const outcome = await renameTo(state.io, entry, renamePick, validation.name);
+          if (outcome.ok) {
+            renameSucceeded = true;
+            rec?.reasons.push(`renamed ${renamePick.name} to "${validation.name}"`);
+          } else {
+            statusLine = outcome.line;
+            rec?.reasons.push(outcome.reason);
+          }
+        }
       } else if (!asksRename) {
         rec?.reasons.push('ignored a NICKNAME line nobody asked for');
       } else {

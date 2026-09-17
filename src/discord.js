@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
+import { matchesMemberName } from './rename.js';
 
 // Every message in an allowed channel is passed on, so Lu can follow the
 // conversation. Whether he answers is decided later, in attention.js.
@@ -77,6 +78,37 @@ export function createChannelIo(channel) {
         console.warn(`Nickname change refused: ${err.message}`);
         return { ok: false, reason: 'refused' };
       }
+    },
+    // Someone else's nickname; null clears it. Discord only lets Lu rename a
+    // member whose highest role sits below his, and never the server owner --
+    // `manageable` is discord.js's own check of exactly that, so an outranked
+    // rename gets its own line instead of a generic refusal.
+    async renameMember(userId, name) {
+      const guild = channel.guild;
+      if (!guild) return { ok: false, reason: 'notInGuild' };
+      try {
+        const member = await guild.members.fetch(userId);
+        if (!member.manageable) return { ok: false, reason: 'outranked' };
+        await member.setNickname(name);
+        return { ok: true };
+      } catch (err) {
+        console.warn(`Rename of ${userId} refused: ${err.message}`);
+        return { ok: false, reason: 'refused' };
+      }
+    },
+    // Discord's member search matches the start of a username or nickname, so
+    // its results are narrowed to exact matches here. Throws if the search
+    // itself fails; the caller decides what that means.
+    async findMembers(typed) {
+      const guild = channel.guild;
+      if (!guild) return [];
+      const found = await guild.members.search({ query: typed, limit: 10 });
+      return [...found.values()]
+        .filter((m) => matchesMemberName({
+          displayName: m.displayName, nickname: m.nickname,
+          username: m.user?.username, globalName: m.user?.globalName,
+        }, typed))
+        .map((m) => ({ id: m.id, name: m.displayName }));
     },
   };
 }
