@@ -1,5 +1,24 @@
 # Lu Bot — status
 
+> **2026-09-17 (later): Lu renames other members. Deployed from branch
+> `feat/rename-others` (`a0b6350`, built on `fix/lu-answers-the-message`),
+> not merged. Not yet tried on the live server.**
+>
+> Spec: `docs/superpowers/specs/2026-09-17-rename-others-design.md`. User's
+> calls: only Manage Nicknames holders may ask; target by @mention or typed
+> name (must match exactly one member); given name used exactly, otherwise Lu
+> picks via the existing `NICKNAME` marker. Code in `src/rename.js`, wired in
+> `src/conversation.js`, `renameMember`/`findMembers` in `src/discord.js`.
+> Suite 527/527 on MacBook and mini; five mutations each killed their test.
+>
+> **Unverified live:** Lu's role needs Manage Nicknames and must sit above
+> the target; and whether Discord's member search works without the Server
+> Members privileged intent (docs did not say). If it fails, typed names only
+> resolve against recent speakers and `lu explain` shows "member search failed".
+>
+> Deployed 12:07: backup `lu-bot-backup-0ee834d-20260917-120736.tar.gz`,
+> rsync, marker, kickstart. PID 25815, `Lu Bot is online`.
+
 > **2026-09-17: Lu replies to the message instead of giving a speech.
 > Deployed from branch `fix/lu-answers-the-message` (`0ee834d`), not yet
 > merged to `main`. Not yet watched in real conversation.**
