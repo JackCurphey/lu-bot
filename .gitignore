@@ -13,6 +13,8 @@ data/corpus/*.json
 # Runtime state (per-user credit balances)
 data/credits.json
 data/credits.json.tmp
+# Last version posted to the update channel (src/announce.js)
+data/announced-version.txt
 
 # Source texts (large; keep out of git)
 data/raw/

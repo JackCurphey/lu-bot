@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { loadConfig, startupWarnings } from './config.js';
 import { createLlm } from './llm.js';
@@ -12,6 +13,7 @@ import { createDecisionLog } from './decisions.js';
 import { isAddressedToLu, hasModel } from './addressee.js';
 import { createConversation } from './conversation.js';
 import { createCreditStore } from './credits/store.js';
+import { announceUpdate } from './announce.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -92,12 +94,30 @@ const conversation = createConversation({
   credits: creditStore,
 });
 
-await startBot({
+const client = await startBot({
   config,
   onMessage: (entry, io) => conversation.handleMessage(entry, io),
 });
 
 console.log('Lu Bot is online.');
+
+// A failure here is logged, never fatal: Lu being up matters more than the
+// notice that he is.
+if (config.discord.updateChannelId) {
+  const lastFile = join(projectRoot, 'data', 'announced-version.txt');
+  try {
+    const channel = await client.channels.fetch(config.discord.updateChannelId);
+    const out = await announceUpdate({
+      changelog: await readFile(join(projectRoot, 'CHANGELOG.md'), 'utf8'),
+      readLast: () => readFile(lastFile, 'utf8').then((v) => v.trim(), () => null),
+      writeLast: (version) => writeFile(lastFile, `${version}\n`),
+      send: (content) => channel.send({ content, allowedMentions: { parse: [] } }),
+    });
+    console.log(out.announced ? `Announced v${out.version}.` : `Update announcement skipped: ${out.reason}`);
+  } catch (err) {
+    console.warn(`Update announcement failed: ${err.message}`);
+  }
+}
 
 // launchd stops the service with SIGTERM. Without this, every restart loses up
 // to CREDITS_FLUSH_MS of awards -- small, but silent, and it would look like

@@ -358,3 +358,9 @@ test('an out-of-range ledger chance is rejected', () => {
     /CREDITS_MENTION_CHANCE must be between 0 and 1/,
   );
 });
+
+test('the update announcement channel is read, and off when unset', () => {
+  assert.equal(loadConfig({ ...valid, UPDATE_CHANNEL_ID: ' 1538590653611515954 ' }).discord.updateChannelId, '1538590653611515954');
+  assert.equal(loadConfig(valid).discord.updateChannelId, null);
+  assert.equal(loadConfig({ ...valid, UPDATE_CHANNEL_ID: '' }).discord.updateChannelId, null);
+});

@@ -125,6 +125,9 @@ export function loadConfig(env) {
       allowedGuilds,
       deniedChannels,
       allowedChannels: channels,
+      // Where Lu posts that he has been updated (src/announce.js). Unset or
+      // empty turns the announcement off.
+      updateChannelId: env.UPDATE_CHANNEL_ID?.trim() || null,
     },
     llm: loadLlmConfig(env),
     history,
