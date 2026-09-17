@@ -80,3 +80,10 @@ test('an unknown key in the weights does not shift the bands', () => {
   const weights = { ...WEIGHTS, sarcastic: 1000 };
   assert.equal(pickMode({ weights, random: () => 0.9999 }), 'windup');
 });
+
+// 2026-09-17: the shared rules used to say "the frame is class, contradiction
+// and struggle", and every mode came out as a lecture that ignored the message.
+test('the shared rules aim every mode at what was actually said', () => {
+  assert.match(SHARED_MODE_RULES, /what was just said/i);
+  assert.doesNotMatch(SHARED_MODE_RULES, /the frame is/i);
+});
