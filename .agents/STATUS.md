@@ -1,5 +1,23 @@
 # Lu Bot — status
 
+> **2026-09-17 (v1.0): Lu has a version and announces updates. Deployed
+> from `feat/version-announce` (`8437b3c`, on top of `feat/rename-others` and
+> `fix/lu-answers-the-message`); none of the three merged or pushed.**
+>
+> `CHANGELOG.md`'s top `## vX.Y` entry is the running version; its bullets
+> are posted to `UPDATE_CHANNEL_ID` (Cry's Cantina, lu-testing-environment,
+> `1538590653611515954`) when Lu starts on a version not yet in
+> `data/announced-version.txt`. **Every deploy that changes behaviour adds a
+> new top entry** (second number up; first only for a big change), written
+> for people in the server.
+>
+> Deployed 12:11: backup `lu-bot-backup-a0b6350-20260917-121158.tar.gz`,
+> `.env` copied to `~/lu-bot-env-before-update-channel.bak` before
+> `UPDATE_CHANNEL_ID` was appended. Log `Announced v1.0.`; the message was
+> read back from the channel via the API and matched. A second restart
+> logged `Update announcement skipped: v1.0 was already announced`.
+> Suite 537/537 on MacBook and mini.
+
 > **2026-09-17 (later): Lu renames other members. Deployed from branch
 > `feat/rename-others` (`a0b6350`, built on `fix/lu-answers-the-message`),
 > not merged. Not yet tried on the live server.**
