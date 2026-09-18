@@ -1,5 +1,29 @@
 # Lu Bot — status
 
+> **2026-09-18 (v1.1): people can suggest features and Lu writes them down.
+> Deployed from `feat/suggestions` (`cc2ee16`, on top of `main` at `60d59f6`);
+> branch not merged or pushed.**
+>
+> "lu suggest: ...", "lu idea ...", "lu feature request: ..." from anyone in
+> the server appends a JSON line to `~/lu-bot/data/suggestions.jsonl` on the
+> mini (gitignored, created on the first suggestion — it does not exist yet).
+> Read it with `ssh mini cat ~/lu-bot/data/suggestions.jsonl`. Each line holds
+> the text as typed, the author id and name, guild/channel/message ids and a
+> jump link. Code in `src/suggestions.js`, wired as a command in
+> `src/conversation.js` (answered and stopped, so the model never sees it and
+> the asker earns no credits) and in `src/index.js`. Config
+> `SUGGESTIONS_ENABLED` / `SUGGESTIONS_FILE`; neither is set in `.env`, so both
+> defaults apply. Lu never reads suggestions back.
+>
+> Suite 564/564 on MacBook and mini; eight mutations each killed their test.
+> Deployed 05:15: backup `lu-bot-backup-8437b3c-20260918-051551.tar.gz`, rsync
+> from `git ls-files`, no `--delete`, marker, kickstart. No dependency change,
+> so no `npm ci`. PID 38272, `Lu Bot is online`, log `Announced v1.1.`; the
+> announcement was read back from the update channel via the API and matched.
+>
+> **Unverified live:** nobody has filed a suggestion on the real server yet, so
+> the first actual write to the file is untested in production.
+
 > **2026-09-17 (v1.0): Lu has a version and announces updates. Deployed
 > from `feat/version-announce` (`8437b3c`, on top of `feat/rename-others` and
 > `fix/lu-answers-the-message`); none of the three merged or pushed.**
