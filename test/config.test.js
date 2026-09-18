@@ -364,3 +364,17 @@ test('the update announcement channel is read, and off when unset', () => {
   assert.equal(loadConfig(valid).discord.updateChannelId, null);
   assert.equal(loadConfig({ ...valid, UPDATE_CHANNEL_ID: '' }).discord.updateChannelId, null);
 });
+
+test('suggestions are on by default and land in data/suggestions.jsonl', () => {
+  const cfg = loadConfig(valid);
+  assert.equal(cfg.suggestions.enabled, true);
+  assert.equal(cfg.suggestions.file, 'data/suggestions.jsonl');
+});
+
+test('suggestions can be switched off and pointed somewhere else', () => {
+  const cfg = loadConfig({
+    ...valid, SUGGESTIONS_ENABLED: 'false', SUGGESTIONS_FILE: 'data/ideas.jsonl',
+  });
+  assert.equal(cfg.suggestions.enabled, false);
+  assert.equal(cfg.suggestions.file, 'data/ideas.jsonl');
+});

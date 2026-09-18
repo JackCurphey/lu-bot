@@ -163,6 +163,13 @@ export function loadConfig(env) {
     },
     credits,
     mood,
+    suggestions: {
+      enabled: (env.SUGGESTIONS_ENABLED ?? 'true') !== 'false',
+      // Relative to the project root, resolved in src/index.js for the same
+      // reason the corpus is: under launchd the working directory is not the
+      // repo. Gitignored -- this is runtime state, like the credit ledger.
+      file: env.SUGGESTIONS_FILE?.trim() || 'data/suggestions.jsonl',
+    },
   };
 }
 

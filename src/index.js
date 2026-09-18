@@ -14,6 +14,7 @@ import { isAddressedToLu, hasModel } from './addressee.js';
 import { createConversation } from './conversation.js';
 import { createCreditStore } from './credits/store.js';
 import { announceUpdate } from './announce.js';
+import { formatEntry, appendSuggestion } from './suggestions.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -92,6 +93,23 @@ const conversation = createConversation({
   respondWithReason,
   isAddressed: ({ entries }) => isAddressedToLu({ entries, llm, config, available: addresseeAvailable }),
   credits: creditStore,
+  // Resolved against the project root for the same reason the corpus and the
+  // credit ledger are: under launchd the working directory is not the repo.
+  recordSuggestion: config.suggestions.enabled
+    ? async ({ entry, text }) => {
+      await appendSuggestion({
+        path: join(projectRoot, config.suggestions.file),
+        entry: formatEntry({
+          text,
+          authorId: entry.authorId,
+          authorName: entry.name,
+          guildId: entry.guildId ?? null,
+          channelId: entry.channelId,
+          messageId: entry.messageId,
+        }),
+      });
+    }
+    : null,
 });
 
 const client = await startBot({

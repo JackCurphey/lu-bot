@@ -76,6 +76,21 @@ Ask him, in plain English:
 
 By default only people with Discord's **Manage Nicknames** permission can do this. Going back to his normal name reveals his account name, `Lü Xiaojun` — everything else is a nickname.
 
+### Suggesting a feature
+
+Anyone can tell Lu what they want him to be able to do:
+
+```
+lu suggest: let people vote on the music
+lu idea - a command that rolls dice
+lu feature request: remember birthdays
+```
+
+He writes it down word for word and says he has noted it. He does **not** read
+suggestions back, discuss them, or act on them — they go to whoever builds him.
+If he says he could not write it down, he could not: he never claims to have
+noted something he has not.
+
 ### Things worth knowing
 
 **He reads every message in the channels he watches.** He has to, in order to follow a conversation rather than only answering direct mentions. That history lives in memory only and is thrown away when he restarts. Your credit balance is the only thing about you kept on disk.
@@ -121,6 +136,7 @@ npm test
 | `src/responder.js` | Builds the prompt and enforces the reply rules. |
 | `src/quotes.js` | Rejects a reply whose quotation cannot be found in the supplied passages. |
 | `src/credits/` | The activity ledger: curve, store, earning rule, commands. |
+| `src/suggestions.js` | Recognises a feature suggestion and appends it to a file for a developer to read. |
 | `src/corpus/` | Chunking, embedding and searching the text library. |
 
 Two conventions the code sticks to, and worth knowing before changing anything:

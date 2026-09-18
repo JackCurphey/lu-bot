@@ -8,6 +8,7 @@ import { respondWithReason } from '../src/responder.js';
 import { CREDITS_DISABLED, CREDITS_STANDING_RULE } from '../src/credits/commands.js';
 import { MODE_IDS, moodInstruction } from '../src/mood.js';
 import { RENAME_LINES } from '../src/rename.js';
+import { SUGGESTION_LINES } from '../src/suggestions.js';
 
 const config = {
   trigger: {
@@ -17,6 +18,7 @@ const config = {
   reply: { timeoutSeconds: 90 },
   llm: { chatModel: 'chat' },
   nickname: { enabled: true, requirePermission: true },
+  suggestions: { enabled: true },
 };
 const T0 = 1_000_000;
 const PAUSE_MS = 3000;
@@ -1105,5 +1107,60 @@ test('member renames are off when nicknames are switched off', async () => {
   const s = setup({ config: { ...config, nickname: { enabled: false, requirePermission: true } } });
   await say(s, asker('rename @sam to potato'));
   assert.deepEqual(s.calls.renameMember, []);
+  assert.deepEqual(s.sent, ['wot']);
+});
+
+// --- Suggestions ---------------------------------------------------------------
+
+const SUGGEST = 'lu suggest: let people vote on the music';
+
+test('a suggestion is written down, confirmed, and never reaches the model', async () => {
+  const recorded = [];
+  const s = setup({ recordSuggestion: async (arg) => { recorded.push(arg); } });
+  await say(s, msg({ text: SUGGEST }));
+
+  assert.deepEqual(recorded.map((r) => r.text), ['let people vote on the music']);
+  assert.equal(recorded[0].entry.authorId, 'sam');
+  assert.deepEqual(s.sent, [SUGGESTION_LINES.noted()]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('a suggestion with nothing in it is answered and nothing is written down', async () => {
+  const recorded = [];
+  const s = setup({ recordSuggestion: async (arg) => { recorded.push(arg); } });
+  await say(s, msg({ text: 'lu suggest:' }));
+
+  assert.deepEqual(recorded, []);
+  assert.deepEqual(s.sent, [SUGGESTION_LINES.empty()]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('a write that fails says so instead of confirming a capture that did not happen', async () => {
+  const s = setup({ recordSuggestion: async () => { throw new Error('disk on fire'); } });
+  await say(s, msg({ text: SUGGEST }));
+
+  assert.deepEqual(s.sent, [SUGGESTION_LINES.failed()]);
+  assert.equal(s.calls.respond.length, 0);
+});
+
+test('with suggestions switched off, "lu suggest" is ordinary conversation', async () => {
+  const recorded = [];
+  const s = setup({
+    config: { ...config, suggestions: { enabled: false } },
+    recordSuggestion: async (arg) => { recorded.push(arg); },
+  });
+  await say(s, msg({ mentionsLu: true, text: SUGGEST }));
+
+  assert.deepEqual(recorded, []);
+  assert.deepEqual(s.sent, ['wot']);
+  assert.equal(s.calls.respond.length, 1);
+});
+
+test('an ordinary message that merely says "suggest" still reaches the model', async () => {
+  const recorded = [];
+  const s = setup({ recordSuggestion: async (arg) => { recorded.push(arg); } });
+  await say(s, msg({ mentionsLu: true, text: '@Lu we should suggest a name for the channel' }));
+
+  assert.deepEqual(recorded, []);
   assert.deepEqual(s.sent, ['wot']);
 });

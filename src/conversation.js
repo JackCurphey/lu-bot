@@ -10,6 +10,7 @@ import { pickMode, moodInstruction } from './mood.js';
 import {
   parseMemberRename, matchesMemberName, RENAME_LINES, memberRenamedInstruction, pickNameInstruction,
 } from './rename.js';
+import { parseSuggestion, SUGGESTION_LINES } from './suggestions.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
@@ -51,6 +52,10 @@ export function createConversation({
   respondWithReason,
   isAddressed,
   credits = null,
+  // Writes a suggestion down, wired in src/index.js. Kept out of this module
+  // so the conversation never touches the filesystem, and so a test can watch
+  // what was recorded without a temporary directory.
+  recordSuggestion = null,
   now = Date.now,
   random = Math.random,
   setTimeoutImpl = setTimeout,
@@ -452,6 +457,31 @@ export function createConversation({
       const rec = decisions.find(entry.channelId, explain[1]);
       await safeSend(state, rec ? formatDecision(rec) : NOT_FOUND);
       return;
+    }
+
+    // A command like the ones below: answered and stopped, so the wording
+    // reaches the file exactly as it was typed rather than through the model,
+    // which would be free to paraphrase it. Ahead of the credit award for the
+    // same reason the ledger commands are -- a command does not pay its asker.
+    if (recordSuggestion && config.suggestions?.enabled && !entry.isBot) {
+      const suggestion = parseSuggestion(entry.text);
+      if (suggestion) {
+        if (suggestion.text === '') {
+          await safeSend(state, SUGGESTION_LINES.empty());
+          return;
+        }
+        try {
+          await recordSuggestion({ entry, text: suggestion.text });
+        } catch (err) {
+          // Never confirm a capture that did not happen: the person would
+          // walk away believing their idea was written down.
+          console.error('Failed to record a suggestion:', err);
+          await safeSend(state, SUGGESTION_LINES.failed());
+          return;
+        }
+        await safeSend(state, SUGGESTION_LINES.noted());
+        return;
+      }
     }
 
     // With the ledger switched off, a credits/leaderboard command is no

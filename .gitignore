@@ -15,6 +15,8 @@ data/credits.json
 data/credits.json.tmp
 # Last version posted to the update channel (src/announce.js)
 data/announced-version.txt
+# Feature suggestions from the server (src/suggestions.js)
+data/suggestions.jsonl
 
 # Source texts (large; keep out of git)
 data/raw/
