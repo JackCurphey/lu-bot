@@ -49,7 +49,7 @@ export async function appendSuggestion({ path, entry }) {
 }
 
 export const SUGGESTION_LINES = {
-  noted: () => 'noted. ill put that in front of the boss',
+  noted: () => 'noted. ill put that in front of the chairman',
   empty: () => 'suggest what? say it after "lu suggest"',
   failed: () => 'i went to write that down and my pen died. tell mark directly',
 };
