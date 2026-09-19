@@ -1,5 +1,52 @@
 # Lu Bot — status
 
+> **2026-09-19: Bonsai on the mini is measured and rejected — it is ~8x slower
+> than qwen3:4b. No code change; this entry exists so nobody re-opens it.**
+>
+> PrismML's Ternary Bonsai was investigated as a replacement model. The
+> headline 27B (Bonsai 2) is not runnable here: PrismML's Apple path is MLX,
+> which is Apple-Silicon-only, and **the mini is a 2018 Intel machine**
+> (`Macmini8,1`, Core i3-8100B, 4 cores, 16 GB, macOS 15.7.9). That is the real
+> constraint and it applies to every future "can we run model X on the mini"
+> question — the mini is Intel, not Apple Silicon.
+>
+> The 4B was benchmarked instead, since it is the same size class as the
+> `qwen3:4b-instruct` Lu runs today. Both models, same binary, 4 threads,
+> `llama-bench -p 64 -n 16 -r 1`:
+>
+> | Model | Size | pp64 | tg16 |
+> | :--- | ---: | ---: | ---: |
+> | Bonsai 4B Q2_0 (g64) | 1.05 GiB | 10.52 t/s | **1.43 t/s** |
+> | qwen3:4b-instruct Q4_K_M | 2.32 GiB | 38.56 t/s | **11.24 t/s** |
+>
+> Bonsai is **7.9x slower at generation**, 3.7x slower at prompt, for 55% less
+> memory. The mini is not memory-starved at 16 GB, so that trade buys nothing.
+> Lu's ~15-second answers would become roughly two minutes.
+>
+> **Cause, confirmed in source:** neither mainline llama.cpp nor PrismML's fork
+> has an x86 SIMD kernel for `Q2_0`/`PQ2_0` — both only define
+> `ggml_vec_dot_q2_0_q8_0_generic`, a scalar C loop. The one x86 fast path is
+> gated on AVX-VNNI, which Coffee Lake does not have. qwen3's Q4_K_M runs
+> hand-tuned AVX2. This is a kernel-maturity gap, not a model-quality one, and
+> it would change if PrismML ships a plain-AVX2 kernel.
+>
+> **Corroborated across two builds**, which is why this is worth trusting:
+> mainline `b11042` gave 1.43 vs 11.24 t/s; PrismML's own fork `b10685` gave
+> 1.43 (`PQ2_0`) / 1.44 (`Q2_0` g64) vs 11.11 t/s. The fork's own recommended
+> `PQ2_0` format is no faster, exactly as the missing-VNNI reading predicted.
+>
+> **Gotcha for anyone retrying:** the file named `Ternary-Bonsai-4B-Q2_0.gguf`
+> on Hugging Face is the *legacy* g128 layout and fails to load on current
+> builds with a tensor-offset error. Use `Ternary-Bonsai-4B-Q2_0_g64.gguf` or
+> `PQ2_0`. PrismML ships prebuilt Intel macOS binaries
+> (`llama-prism-*-bin-macos-x64.tar.gz`), so no compiler is needed on the mini.
+>
+> **Not measured:** answer quality was never compared — this is a speed result
+> only. Single repetition, so the `± 0.00` is one sample, not a stability
+> figure. Short shapes (64-token prompt, 16-token generation) were used because
+> a longer first run took ~2 hours. Scratch files were removed from the mini
+> afterwards; nothing was installed system-wide and Lu was not reconfigured.
+
 > **2026-09-18 (v1.1): people can suggest features and Lu writes them down.
 > Deployed from `feat/suggestions` (`cc2ee16`, on top of `main` at `60d59f6`);
 > branch not merged or pushed.**
