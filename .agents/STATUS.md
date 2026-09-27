@@ -1,8 +1,8 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed, all live checks
-> passed); WP-2 re-audit in progress on `feat/wp2-moderation`.**
+> Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed). WP-3 (logging)
+> moved ahead of WP-2 (D35); re-audit in progress on `feat/wp3-logging`.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
 > Decisions D22–D34, deferrals DF10–DF12. Spec, plan and WP-1 are on `main`
@@ -14,8 +14,8 @@
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
 > | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
-> | 2 | Moderation with case history | re-audit, then plan |
-> | 3 | Logging | not started |
+> | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
+> | 3 | Logging | next (D35): re-audit, then plan |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
