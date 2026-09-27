@@ -131,7 +131,9 @@ const settings = db ? createSettings(db) : null;
 const messageStore = config.features.moderation || config.features.logging ? createMessageStore() : null;
 const guildEvents = createGuildEvents({ managedGuilds: config.discord.allowedGuilds });
 const commands = createCommandRegistry();
-const changelog = await readFile(join(projectRoot, 'CHANGELOG.md'), 'utf8');
+// A missing CHANGELOG.md must not stop Lu starting -- /lu-status falls back
+// to reporting the version as 'unknown' (final review F3).
+const changelog = await readFile(join(projectRoot, 'CHANGELOG.md'), 'utf8').catch(() => '');
 commands.register(createStatusCommand({
   version: parseChangelog(changelog)?.version ?? 'unknown',
   features: config.features,
@@ -178,8 +180,11 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
       // final review): every award since the last successful write would
       // otherwise be lost with nothing but this log line to show for it, and
       // exit 0 would tell launchd it was a clean stop. Exit non-zero so the
-      // log distinguishes "stopped" from "stopped and lost the ledger".
+      // log distinguishes "stopped" from "stopped and lost the ledger". The
+      // db handle is still closed on this path (final review F5) -- a failed
+      // credit flush must not also leak the database file lock.
       console.error('Failed to flush the credit ledger on shutdown:', err);
+      db?.close();
       process.exit(1);
     }
     db?.close();

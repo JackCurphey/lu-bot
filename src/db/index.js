@@ -33,12 +33,12 @@ function migrate(db, migrations) {
 
 export function openDatabase({ file, migrations = MIGRATIONS }) {
   const db = new DatabaseSync(file);
-  // WAL lets a second reader -- the web settings page, later -- read while Lu
-  // writes. busy_timeout makes a brief lock a wait, not an error.
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA busy_timeout = 5000');
-  db.exec('PRAGMA foreign_keys = ON');
   try {
+    // WAL lets a second reader -- the web settings page, later -- read while
+    // Lu writes. busy_timeout makes a brief lock a wait, not an error.
+    db.exec('PRAGMA journal_mode = WAL');
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.exec('PRAGMA foreign_keys = ON');
     migrate(db, migrations);
   } catch (err) {
     db.close();
