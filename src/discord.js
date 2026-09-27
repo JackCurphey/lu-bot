@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, PermissionsBitField, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, Events, PermissionsBitField, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
 import { matchesMemberName } from './rename.js';
 
 // Every message in an allowed channel is passed on, so Lu can follow the
@@ -33,6 +33,19 @@ export function intentsFor(config) {
   // Bans, unbans and audit-log entries. Not privileged.
   if (f.moderation || f.logging) intents.push(GatewayIntentBits.GuildModeration);
   return intents;
+}
+
+// discord.js only synthesises a partial message/member for an object missing
+// from its cache when the matching Partials value is enabled -- otherwise
+// MessageDelete, MessageUpdate and GuildMemberRemove never fire for it at all
+// (node_modules/discord.js/src/client/actions/Action.js ~29-31). The message
+// cache is 200 per channel and empty after every restart, so without this,
+// WP-3 delete logging and WP-2 kick detection silently miss most events.
+// Requested only alongside the features that consume them, so with every
+// switch off the Client is constructed exactly as it was before this task.
+export function partialsFor(config) {
+  const f = config.features ?? {};
+  return (f.moderation || f.logging || f.welcome) ? [Partials.Message, Partials.GuildMember] : [];
 }
 
 export const LU_NAME = 'Lu';
@@ -259,6 +272,31 @@ export async function registerGuildCommands({ client, guildIds, definitions }) {
   }
 }
 
+// A single MessageUpdate handler, so the emit-then-update order is fixed in
+// one place rather than depending on listener registration order. A future
+// edit-log handler reading messageStore.get(id) during the emit must still
+// see the OLD text -- the store is only updated once the emit has settled.
+// Each half catches its own error so a failing emit never stops the store
+// update, and a failing store update never stops (or is stopped by) the emit.
+export function createMessageUpdateHandler({ messageStore, guildEvents }) {
+  return async function handleMessageUpdate(before, after) {
+    if (guildEvents && guildEvents.has('messageUpdate')) {
+      try {
+        await guildEvents.emit('messageUpdate', after.guildId, [before, after]);
+      } catch (err) {
+        console.error('Failed to forward messageUpdate:', err);
+      }
+    }
+    if (messageStore) {
+      try {
+        if (after.content != null) messageStore.updateText(after.id, after.content);
+      } catch (err) {
+        console.error('Failed to update stored message:', err);
+      }
+    }
+  };
+}
+
 function viewOf(message) {
   return {
     id: message.id,
@@ -284,6 +322,7 @@ function viewOf(message) {
 export async function startBot({ config, onMessage, commands = null, guildEvents = null, messageStore = null }) {
   const client = new Client({
     intents: intentsFor(config),
+    partials: partialsFor(config),
   });
 
   // Client is an EventEmitter, and an 'error' event with no listener is
@@ -322,16 +361,6 @@ export async function startBot({ config, onMessage, commands = null, guildEvents
     }
   });
 
-  if (messageStore) {
-    client.on(Events.MessageUpdate, (_before, after) => {
-      try {
-        if (after.content != null) messageStore.updateText(after.id, after.content);
-      } catch (err) {
-        console.error('Failed to update stored message:', err);
-      }
-    });
-  }
-
   if (commands) {
     client.once(Events.ClientReady, () => registerGuildCommands({
       client, guildIds: config.discord.allowedGuilds, definitions: commands.definitions(),
@@ -365,10 +394,17 @@ export async function startBot({ config, onMessage, commands = null, guildEvents
     forward(Events.GuildMemberUpdate, 'memberUpdate', (_before, after) => after.guild.id);
     forward(Events.GuildBanAdd, 'banAdd', (ban) => ban.guild.id);
     forward(Events.GuildBanRemove, 'banRemove', (ban) => ban.guild.id);
-    forward(Events.MessageUpdate, 'messageUpdate', (_before, after) => after.guildId);
     forward(Events.MessageDelete, 'messageDelete', (m) => m.guildId);
     forward(Events.MessageBulkDelete, 'messageBulkDelete', (messages, channel) => channel.guildId);
     forward(Events.GuildAuditLogEntryCreate, 'auditLogEntry', (_entry, guild) => guild.id);
+  }
+
+  // MessageUpdate needs its own registration (not the generic forward above):
+  // the store update must happen only after the guild-event emit has settled,
+  // so an edit-log handler reading the store during the emit still sees the
+  // old text (final review F2).
+  if (messageStore || guildEvents) {
+    client.on(Events.MessageUpdate, createMessageUpdateHandler({ messageStore, guildEvents }));
   }
 
   await client.login(config.discord.token);

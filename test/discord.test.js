@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GatewayIntentBits, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands } from '../src/discord.js';
+import { GatewayIntentBits, Partials, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler } from '../src/discord.js';
+import { createMessageStore } from '../src/message-store.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
 //
@@ -437,6 +438,33 @@ test('a config with no features block asks for the chat intents only', () => {
   assert.equal(intentsFor({}).length, 3);
 });
 
+// --- Partials (final review F1) ---
+// Without Partials.Message / Partials.GuildMember, discord.js only synthesises
+// a partial for an uncached message/member -- MessageDelete, MessageUpdate and
+// GuildMemberRemove never fire for them. WP-2/WP-3 need those events, but only
+// when a feature that consumes them is on, so the default (every switch off)
+// stays exactly as it was before this task.
+
+test('with every server feature off, no partials are requested', () => {
+  assert.deepEqual(partialsFor({ features: off }), []);
+});
+
+test('moderation, logging and welcome each need the message and member partials', () => {
+  for (const key of ['moderation', 'logging', 'welcome']) {
+    const result = partialsFor({ features: { ...off, [key]: true } });
+    assert.ok(result.includes(Partials.Message), key);
+    assert.ok(result.includes(Partials.GuildMember), key);
+  }
+});
+
+test('role menus alone do not request partials', () => {
+  assert.deepEqual(partialsFor({ features: { ...off, roleMenus: true } }), []);
+});
+
+test('a config with no features block requests no partials', () => {
+  assert.deepEqual(partialsFor({}), []);
+});
+
 // --- Interaction adapter (WP-1) ---
 
 const fakeInteraction = (over = {}) => ({
@@ -517,6 +545,113 @@ test('bots, direct messages and system messages are not stored', () => {
   assert.equal(messageRecordOf(fakeMessage({ author: { id: 'b', bot: true, displayName: 'B' } })), null);
   assert.equal(messageRecordOf(fakeMessage({ guildId: null })), null);
   assert.equal(messageRecordOf(fakeMessage({ system: true })), null);
+});
+
+// --- MessageUpdate handler ordering (final review F2) ---
+// The store must not be updated with the new text until any edit-log handler
+// has already emitted with the old text -- otherwise a future edit-log
+// listener calling messageStore.get(id) sees the NEW text.
+
+function fakeGuildEvents({ hasIt = true, onEmit = null } = {}) {
+  const calls = [];
+  return {
+    has: () => hasIt,
+    async emit(name, guildId, payload) {
+      calls.push({ name, guildId, payload });
+      if (onEmit) await onEmit(payload);
+    },
+    calls,
+  };
+}
+
+test('the store still has the old text while the emitted handler runs, and the new text after', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  let seenDuringEmit = null;
+  const guildEvents = fakeGuildEvents({
+    onEmit: async () => {
+      seenDuringEmit = messageStore.get('m1').text;
+    },
+  });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  const before = { id: 'm1', guildId: 'g1', content: 'old' };
+  const after = { id: 'm1', guildId: 'g1', content: 'new' };
+  await handler(before, after);
+
+  assert.equal(seenDuringEmit, 'old');
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('the emit carries [before, after] and the guild id of after', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = fakeGuildEvents();
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  const before = { id: 'm1', guildId: 'g1', content: 'old' };
+  const after = { id: 'm1', guildId: 'g1', content: 'new' };
+  await handler(before, after);
+
+  assert.equal(guildEvents.calls.length, 1);
+  assert.equal(guildEvents.calls[0].name, 'messageUpdate');
+  assert.equal(guildEvents.calls[0].guildId, 'g1');
+  assert.deepEqual(guildEvents.calls[0].payload, [before, after]);
+});
+
+test('with guildEvents null, the store still updates', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents: null });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('with messageStore null, the emit still happens', async () => {
+  const guildEvents = fakeGuildEvents();
+  const handler = createMessageUpdateHandler({ messageStore: null, guildEvents });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(guildEvents.calls.length, 1);
+});
+
+test('with guildEvents.has() false, no emit happens but the store still updates', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = fakeGuildEvents({ hasIt: false });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(guildEvents.calls.length, 0);
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('a throwing guild handler does not prevent the store update', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = { has: () => true, emit: async () => { throw new Error('boom'); } };
+  const error = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+    await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  } finally {
+    console.error = error;
+  }
+  assert.equal(messageStore.get('m1').text, 'new');
+  assert.ok(errors.length > 0);
 });
 
 // --- Command registration (WP-1) ---
