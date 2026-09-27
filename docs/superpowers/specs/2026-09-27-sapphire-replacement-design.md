@@ -1,8 +1,7 @@
 # Spec: Lu replaces Sapphire in Cry's Cantina
 
-**Status:** draft
-**Approved by:** — (design approved section by section in chat, 2026-09-27;
-this written spec awaits review)
+**Status:** approved
+**Approved by:** owner, 2026-09-27 (sections approved in chat; written spec approved)
 
 ## Intent
 
@@ -321,11 +320,17 @@ Other behaviour:
 
 ## Open questions
 
-1. **(Blocks sub-project 4's join-role step.)** Does Cry's Cantina use
-   Discord's membership screening ("accept the rules")? If it does, can a bot
-   assign roles to a pending member? Check Discord's documentation and the
-   server's settings; if roles cannot be assigned, wait for the `pending` flag
-   to clear.
+1. **(Blocks sub-project 4's join-role step.)** Cry's Cantina **does** use
+   membership screening. On 2026-09-27 the guild's feature list included
+   `MEMBER_VERIFICATION_GATE_ENABLED`, read via the Discord API with Lu's
+   token. It also has Onboarding with prompts (`GUILD_ONBOARDING`,
+   `GUILD_ONBOARDING_HAS_PROMPTS`), which can assign roles itself. Still to
+   settle in the WP-4 plan:
+   - whether a bot can assign roles to a member who is still `pending`; if not,
+     wait for the `pending` flag to clear;
+   - whether a welcome should wait for screening too;
+   - which roles Onboarding already assigns, so join roles and role menus do
+     not duplicate them.
 2. **(Blocks deploying sub-project 1.)** The owner must enable the Server
    Members intent in the Developer Portal, and grant Lu's role the permissions
    and position listed above.
