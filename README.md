@@ -151,7 +151,7 @@ Everything is environment variables, documented with defaults in [.env.example](
 
 Which channels he watches is either a list of channel IDs (`DISCORD_ALLOWED_CHANNELS`) or every channel in a list of servers (`DISCORD_ALLOWED_GUILDS`), with `DISCORD_DENIED_CHANNELS` to carve exceptions out of the latter.
 
-The server features -- moderation, logging, welcome messages and role menus -- are each switched on in `.env` and act across every channel of the servers in `DISCORD_ALLOWED_GUILDS`. Their settings live in `data/lu.db`. `/lu-status` (Manage Server) shows which are on.
+The server features -- moderation, logging, welcome messages and role menus -- are each switched on in `.env` and act across every channel of the servers in `DISCORD_ALLOWED_GUILDS`. Their settings live in `data/lu.db`. `/lu-status` (anyone) shows which are on.
 
 ### Where the thinking is written down
 
