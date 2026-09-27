@@ -153,6 +153,8 @@ Which channels he watches is either a list of channel IDs (`DISCORD_ALLOWED_CHAN
 
 The server features -- moderation, logging, welcome messages and role menus -- are each switched on in `.env` and act across every channel of the servers in `DISCORD_ALLOWED_GUILDS`. Their settings live in `data/lu.db`. `/lu-status` (anyone) shows which are on.
 
+**Logging.** When logging is switched on, the server's admins choose channels (`/log channel`) where Lu posts deleted and edited messages -- including their text -- and, later, member joins, leaves and changes. Anyone who can read a log channel can read what was deleted. Lu himself still keeps message text only in memory, for at most 24 hours.
+
 ### Where the thinking is written down
 
 - [docs/superpowers/specs/](docs/superpowers/specs/) — design documents, one per piece of work, including a verification walk for each
@@ -167,6 +169,7 @@ The specs record what was decided and why, including the parts that went wrong. 
 - **Credits have no per-server dimension.** Balances are keyed on user ID alone, so watching a second server would pool everyone's credits into one leaderboard.
 - **Voice credits are not built.** The storage schema has a field waiting for them.
 - **Single instance.** There is no clustering and no shared state; two copies would both answer.
+- **Logging can miss that a message was a bot's.** A message sent before Lu last restarted carries no author when it is deleted, so a bot's old message can appear in the delete log.
 
 ---
 

@@ -1,38 +1,32 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: wp-active (WP-1). Merged (PR #1, `6a3674f`) and deployed 18:05 as
-> v1.2, all switches off. Live checks 1–2 passed; 3–4 await the owner.**
->
-> Deploy: backup `~/lu-bot-backup-cc2ee16-20260927-180550.tar.gz`, rsync from
-> `git ls-files`, no `--delete`, marker `6a3674f`, kickstart. PID 2016. Log:
-> `Registered 1 slash command(s) in guild 1321631568976150588.`, `Lu Bot is
-> online.`, `Announced v1.2.` `data/lu.db` exists with schema version 1 and 0
-> settings. `bot.err.log` last written Sep 13, so nothing new. Waiting on the
-> owner: `/lu-status` in lu-testing-environment shows v1.2, all four features
-> off and `database: ok`; chat still answers.
+> Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed). WP-3 (logging)
+> moved ahead of WP-2 (D35); re-audit in progress on `feat/wp3-logging`.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
-> Decisions D22–D31, deferrals DF10–DF12. Branch
-> `docs/sapphire-replacement-spec`, stacked on `docs/bonsai-benchmark`.
+> Decisions D22–D34, deferrals DF10–DF12. Spec, plan and WP-1 are on `main`
+> (PR #1, #2).
 >
 > Work-package register (one active at a time, each with its own plan in
 > `.agents/work-plans/`):
 >
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
-> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | merged + deployed v1.2; live checks 3–4 pending; evidence in `.agents/work-plans/wp-001-foundation/phase-log.md` |
-> | 2 | Moderation with case history | not started |
-> | 3 | Logging | not started |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
+> | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
+> | 3 | Logging | PR A built + reviewed on `feat/wp3-logging` (687 pass), not merged; PR B not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** the owner runs live checks 3–4 in lu-testing-environment
-> (`1538590653611515954`, D33). Then close WP-1 and
-> re-audit before planning WP-2. WP-2 must add typed per-feature settings
-> wrappers. Membership screening is ON in Cry's Cantina; WP-4 must handle
-> pending members.
+> **Next action:** with the owner's approval, open PR A, merge and deploy it,
+> set `LOGGING_ENABLED=true` on the mini, and live-check it in
+> lu-testing-environment. An admin must run `/log channel` (Manage Server).
+> Then do PR B (member logs). Note for WP-2: deletes currently `forget` stored
+> text, so a spammer's deleted messages won't be in a later ban's 5-message
+> snapshot; decide in WP-2. Before moderation is switched on, Lu's role must
+> move above the rank roles; View Audit Log is still not granted.
 >
 > Test command: `npm test` (`node --test`).
 >
