@@ -13,8 +13,14 @@ import { createDecisionLog } from './decisions.js';
 import { isAddressedToLu, hasModel } from './addressee.js';
 import { createConversation } from './conversation.js';
 import { createCreditStore } from './credits/store.js';
-import { announceUpdate } from './announce.js';
+import { announceUpdate, parseChangelog } from './announce.js';
 import { formatEntry, appendSuggestion } from './suggestions.js';
+import { openDatabase } from './db/index.js';
+import { createSettings } from './settings.js';
+import { createMessageStore } from './message-store.js';
+import { createCommandRegistry } from './commands/registry.js';
+import { createStatusCommand } from './commands/status.js';
+import { createGuildEvents } from './guild-events.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -112,9 +118,32 @@ const conversation = createConversation({
     : null,
 });
 
+// Server features (WP-1). A database that will not open is logged, not fatal:
+// chat and credits do not need it, and /lu-status says it is missing.
+let db = null;
+try {
+  db = openDatabase({ file: join(projectRoot, config.database.file) });
+} catch (err) {
+  console.error(`Database unavailable, server features disabled: ${err.message}`);
+}
+// Used by WP-2 onwards; built now so the database path is proven at startup.
+const settings = db ? createSettings(db) : null;
+const messageStore = config.features.moderation || config.features.logging ? createMessageStore() : null;
+const guildEvents = createGuildEvents({ managedGuilds: config.discord.allowedGuilds });
+const commands = createCommandRegistry();
+const changelog = await readFile(join(projectRoot, 'CHANGELOG.md'), 'utf8');
+commands.register(createStatusCommand({
+  version: parseChangelog(changelog)?.version ?? 'unknown',
+  features: config.features,
+  databaseOk: Boolean(db),
+}));
+
 const client = await startBot({
   config,
   onMessage: (entry, io) => conversation.handleMessage(entry, io),
+  commands,
+  guildEvents,
+  messageStore,
 });
 
 console.log('Lu Bot is online.');
@@ -153,6 +182,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
       console.error('Failed to flush the credit ledger on shutdown:', err);
       process.exit(1);
     }
+    db?.close();
     process.exit(0);
   });
 }
