@@ -1,16 +1,8 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: wp-active (WP-1). Merged (PR #1, `6a3674f`) and deployed 18:05 as
-> v1.2, all switches off. Live checks 1–2 passed; 3–4 await the owner.**
->
-> Deploy: backup `~/lu-bot-backup-cc2ee16-20260927-180550.tar.gz`, rsync from
-> `git ls-files`, no `--delete`, marker `6a3674f`, kickstart. PID 2016. Log:
-> `Registered 1 slash command(s) in guild 1321631568976150588.`, `Lu Bot is
-> online.`, `Announced v1.2.` `data/lu.db` exists with schema version 1 and 0
-> settings. `bot.err.log` last written Sep 13, so nothing new. Waiting on the
-> owner: `/lu-status` in lu-testing-environment shows v1.2, all four features
-> off and `database: ok`; chat still answers.
+> Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed, all live checks
+> passed); WP-2 re-audit in progress on `feat/wp2-moderation`.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
 > Decisions D22–D31, deferrals DF10–DF12. Branch
@@ -21,18 +13,17 @@
 >
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
-> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | merged + deployed v1.2; live checks 3–4 pending; evidence in `.agents/work-plans/wp-001-foundation/phase-log.md` |
-> | 2 | Moderation with case history | not started |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
+> | 2 | Moderation with case history | re-audit, then plan |
 > | 3 | Logging | not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** the owner runs live checks 3–4 in lu-testing-environment
-> (`1538590653611515954`, D33). Then close WP-1 and
-> re-audit before planning WP-2. WP-2 must add typed per-feature settings
-> wrappers. Membership screening is ON in Cry's Cantina; WP-4 must handle
-> pending members.
+> **Next action:** plan WP-2 after the re-audit. Before moderation is switched
+> on, the owner must move Lu's role above the rank roles (Trooper, Sergeant…).
+> It is at position 18 of 40. View Audit Log is not granted; the other
+> permissions are. The Server Members intent is enabled in the portal.
 >
 > Test command: `npm test` (`node --test`).
 >
