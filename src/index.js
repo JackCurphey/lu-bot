@@ -7,7 +7,7 @@ import { loadPersona } from './persona.js';
 import { respondWithReason } from './responder.js';
 import { loadCorpus, search } from './corpus/store.js';
 import { shouldUseCorpus } from './judge.js';
-import { startBot } from './discord.js';
+import { startBot, sendToChannel } from './discord.js';
 import { createHistory } from './history.js';
 import { createDecisionLog } from './decisions.js';
 import { isAddressedToLu, hasModel } from './addressee.js';
@@ -21,6 +21,10 @@ import { createMessageStore } from './message-store.js';
 import { createCommandRegistry } from './commands/registry.js';
 import { createStatusCommand } from './commands/status.js';
 import { createGuildEvents } from './guild-events.js';
+import { createLogSettings } from './logging/settings.js';
+import { createLogRouter } from './logging/router.js';
+import { createMessageLogHandlers } from './logging/message-handlers.js';
+import { createLogCommand } from './logging/commands.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
 // in a channel for weeks; one unhandled rejection in a background path should
@@ -126,7 +130,7 @@ try {
 } catch (err) {
   console.error(`Database unavailable, server features disabled: ${err.message}`);
 }
-// Used by WP-2 onwards; built now so the database path is proven at startup.
+// Read by logging (WP-3) and later features. Built now so the database path is proven at startup.
 const settings = db ? createSettings(db) : null;
 const messageStore = config.features.moderation || config.features.logging ? createMessageStore() : null;
 const guildEvents = createGuildEvents({ managedGuilds: config.discord.allowedGuilds });
@@ -140,6 +144,25 @@ commands.register(createStatusCommand({
   databaseOk: Boolean(db),
 }));
 
+// Logging (WP-3). The client does not exist until startBot returns, and
+// events can arrive before that, so sends go through a holder that fails
+// cleanly ("not connected") until it is filled.
+const discord = { client: null };
+const send = (channelId, payload) => sendToChannel(discord.client, channelId, payload);
+if (config.features.logging) {
+  if (!settings) {
+    console.warn('WARNING: LOGGING_ENABLED is on but the database is unavailable; logging is off.');
+  } else {
+    const logSettings = createLogSettings(settings);
+    const router = createLogRouter({ logSettings, send });
+    const messageLogs = createMessageLogHandlers({ router, messageStore });
+    guildEvents.on('messageDelete', messageLogs.onDelete);
+    guildEvents.on('messageUpdate', messageLogs.onEdit);
+    guildEvents.on('messageBulkDelete', messageLogs.onBulkDelete);
+    commands.register(createLogCommand({ logSettings, send }));
+  }
+}
+
 const client = await startBot({
   config,
   onMessage: (entry, io) => conversation.handleMessage(entry, io),
@@ -147,6 +170,7 @@ const client = await startBot({
   guildEvents,
   messageStore,
 });
+discord.client = client;
 
 console.log('Lu Bot is online.');
 

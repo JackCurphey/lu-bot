@@ -6,6 +6,11 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.4 — 2026-09-27
+
+- lu can keep a log of deleted and edited messages in a channel the admins pick with /log (needs the manage server permission)
+- bulk deletes are logged as one entry with the messages attached
+
 ## v1.3 — 2026-09-27
 
 - anyone can use /lu-status now, not just people with the manage server permission

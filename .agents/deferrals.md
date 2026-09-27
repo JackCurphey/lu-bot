@@ -14,3 +14,4 @@
 | DF10 | Moderation extras: auto-expiring bans, mass/name bans, channel lock, reports, preset reasons, immune roles | Outside the core set (D25) | user | After sub-project 2 is live, if the server asks for them |
 | DF11 | Server-structure logging: channels, roles, emoji, invites, voice, server settings | Noisy; doubles sub-project 3 (D27) | user | After sub-project 3 is live |
 | DF12 | Import Sapphire's case history | Whether Sapphire offers an export was not checked | user | Before Sapphire is removed |
+| DF13 | "Who did it" in logs (deleted by, changed by) from the audit log | Lu lacks View Audit Log; the code could only be tested against fakes and would do nothing live | user | When View Audit Log is granted |
