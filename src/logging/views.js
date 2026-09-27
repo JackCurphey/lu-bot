@@ -21,5 +21,6 @@ export function messageView(message) {
     attachments: [...(message.attachments?.values() ?? [])].map((a) => a.name),
     authorRoleIds: roleIdsOf(message.member, message.guildId),
     at: message.createdTimestamp ?? null,
+    isSystem: Boolean(message.system),
   };
 }

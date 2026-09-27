@@ -169,6 +169,7 @@ The specs record what was decided and why, including the parts that went wrong. 
 - **Credits have no per-server dimension.** Balances are keyed on user ID alone, so watching a second server would pool everyone's credits into one leaderboard.
 - **Voice credits are not built.** The storage schema has a field waiting for them.
 - **Single instance.** There is no clustering and no shared state; two copies would both answer.
+- **Logging can miss that a message was a bot's.** A message sent before Lu last restarted carries no author when it is deleted, so a bot's old message can appear in the delete log.
 
 ---
 
