@@ -9,6 +9,7 @@ export function createMessageLogHandlers({ router, messageStore, now = Date.now 
     async onDelete(message, { guildId }) {
       const v = messageView(message);
       const kept = messageStore?.forget(v.messageId) ?? null;
+      if (v.isSystem) return;
       if (!kept && v.authorIsBot) return;
       const record = {
         messageId: v.messageId,
@@ -33,6 +34,11 @@ export function createMessageLogHandlers({ router, messageStore, now = Date.now 
       const kept = messageStore?.get(after.id) ?? null;
       const oldText = kept ? kept.text : (before && !before.partial ? before.content ?? null : null);
       if (oldText === newText) return;
+      // discord.js also emits messageUpdate for a link preview loading, a
+      // pin, or a thread change -- none of which is an edit. With no
+      // remembered text and no editedTimestamp on the new message, this was
+      // never an edit, so there is nothing to log.
+      if (oldText == null && !after.editedTimestamp) return;
       const v = messageView(after);
       await router.post(guildId, 'messages', formatMessageEdited({
         messageId: v.messageId,
@@ -53,7 +59,12 @@ export function createMessageLogHandlers({ router, messageStore, now = Date.now 
       for (const message of messages.values()) {
         const v = messageView(message);
         const kept = messageStore?.forget(v.messageId) ?? null;
+        if (v.isSystem) continue;
         if (!kept && v.authorIsBot) continue;
+        // Purged individually or in bulk, an ignored role must be ignored
+        // either way -- checked per entry, since one purge can mix authors.
+        const authorRoleIds = kept?.authorRoleIds ?? v.authorRoleIds ?? [];
+        if (router.isIgnoredAuthor(guildId, authorRoleIds)) continue;
         entries.push({
           id: v.messageId,
           authorId: kept?.authorId ?? v.authorId,

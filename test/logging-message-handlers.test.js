@@ -4,9 +4,12 @@ import { createMessageStore } from '../src/message-store.js';
 import { createMessageLogHandlers } from '../src/logging/message-handlers.js';
 
 const meta = { guildId: 'g1' };
-const setup = () => {
+const setup = ({ ignoredRoles = [] } = {}) => {
   const posts = [];
-  const router = { post: async (guildId, category, payload, opts) => { posts.push({ guildId, category, payload, opts }); return 'sent'; } };
+  const router = {
+    post: async (guildId, category, payload, opts) => { posts.push({ guildId, category, payload, opts }); return 'sent'; },
+    isIgnoredAuthor: (guildId, roleIds = []) => roleIds.some((id) => ignoredRoles.includes(id)),
+  };
   const messageStore = createMessageStore({ now: () => 0 });
   const h = createMessageLogHandlers({ router, messageStore, now: () => 0 });
   return { posts, messageStore, h };
@@ -74,9 +77,19 @@ test('an edit to a message Lu never saw falls back to the cached old text, or no
   const { posts, h } = setup();
   const author = { id: 'u1', bot: false, displayName: 'Sam' };
   await h.onEdit([{ ...partial(), partial: false, content: 'cached old' }, { id: 'm1', guildId: 'g1', channelId: 'c1', content: 'new', author }], meta);
-  await h.onEdit([partial(), { id: 'm1', guildId: 'g1', channelId: 'c1', content: 'newer', author }], meta);
+  await h.onEdit([partial(), { id: 'm1', guildId: 'g1', channelId: 'c1', content: 'newer', author, editedTimestamp: 1 }], meta);
   assert.equal(posts[0].payload.embeds[0].fields.find((f) => f.name === 'Before').value, 'cached old');
   assert.match(posts[1].payload.embeds[0].fields.find((f) => f.name === 'Before').value, /not available/);
+});
+
+// discord.js emits messageUpdate for link previews, pins and threads too. For
+// a message not in the store and a partial `before`, there is no old text and
+// no editedTimestamp -- this was never an edit, so nothing is logged.
+test('an update with no remembered text and no editedTimestamp is not logged', async () => {
+  const { posts, h } = setup();
+  const author = { id: 'u1', bot: false, displayName: 'Sam' };
+  await h.onEdit([partial(), { id: 'm1', guildId: 'g1', channelId: 'c1', content: 'new', author }], meta);
+  assert.equal(posts.length, 0);
 });
 
 test('a bulk delete is one entry, skips bots, and forgets what it logged', async () => {
@@ -97,6 +110,43 @@ test('a bulk delete is one entry, skips bots, and forgets what it logged', async
 test('a bulk delete of only bot messages logs nothing', async () => {
   const { posts, h } = setup();
   const messages = new Map([['m3', partial({ id: 'm3', partial: false, content: 'beep', author: { id: 'b', bot: true, displayName: 'Bot' } })]]);
+  await h.onBulkDelete([messages, { id: 'c1', guildId: 'g1' }], meta);
+  assert.equal(posts.length, 0);
+});
+
+// /log ignore @role must apply to a bulk purge too, not just single deletes.
+test('a bulk delete drops entries from an ignored role', async () => {
+  const { posts, messageStore, h } = setup({ ignoredRoles: ['mods'] });
+  messageStore.record(stored({ id: 'm1', text: 'one', authorRoleIds: ['mods'] }));
+  messageStore.record(stored({ id: 'm2', text: 'two', authorRoleIds: ['r1'] }));
+  const messages = new Map([
+    ['m1', partial({ id: 'm1' })],
+    ['m2', partial({ id: 'm2' })],
+  ]);
+  await h.onBulkDelete([messages, { id: 'c1', guildId: 'g1' }], meta);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].payload.embeds[0].title, '1 message deleted');
+});
+
+test('a bulk delete drops every entry from an ignored role and posts nothing', async () => {
+  const { posts, messageStore, h } = setup({ ignoredRoles: ['mods'] });
+  messageStore.record(stored({ id: 'm1', text: 'one', authorRoleIds: ['mods'] }));
+  const messages = new Map([['m1', partial({ id: 'm1' })]]);
+  await h.onBulkDelete([messages, { id: 'c1', guildId: 'g1' }], meta);
+  assert.equal(posts.length, 0);
+});
+
+test('a deleted system message is not logged', async () => {
+  const { posts, h } = setup();
+  await h.onDelete(partial({ partial: false, content: 'Pin added', system: true, author: { id: 'u1', bot: false, displayName: 'Sam' } }), meta);
+  assert.equal(posts.length, 0);
+});
+
+test('a system message inside a bulk delete is dropped', async () => {
+  const { posts, h } = setup();
+  const messages = new Map([
+    ['m1', partial({ id: 'm1', partial: false, content: 'Pin added', system: true, author: { id: 'u1', bot: false, displayName: 'Sam' } })],
+  ]);
   await h.onBulkDelete([messages, { id: 'c1', guildId: 'g1' }], meta);
   assert.equal(posts.length, 0);
 });
