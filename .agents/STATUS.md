@@ -5,8 +5,8 @@
 > passed); WP-2 re-audit in progress on `feat/wp2-moderation`.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
-> Decisions D22–D31, deferrals DF10–DF12. Branch
-> `docs/sapphire-replacement-spec`, stacked on `docs/bonsai-benchmark`.
+> Decisions D22–D34, deferrals DF10–DF12. Spec, plan and WP-1 are on `main`
+> (PR #1, #2).
 >
 > Work-package register (one active at a time, each with its own plan in
 > `.agents/work-plans/`):
