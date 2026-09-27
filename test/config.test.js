@@ -378,3 +378,40 @@ test('suggestions can be switched off and pointed somewhere else', () => {
   assert.equal(cfg.suggestions.enabled, false);
   assert.equal(cfg.suggestions.file, 'data/ideas.jsonl');
 });
+
+// --- Server features (WP-1) ---
+// Each server-wide feature ships switched off: with no test bot (D5), the
+// first live run is in Cry's Cantina, so nothing turns on by accident.
+
+test('server feature switches default to off', () => {
+  const cfg = loadConfig(valid);
+  assert.deepEqual(cfg.features, { moderation: false, logging: false, welcome: false, roleMenus: false });
+});
+
+test('server feature switches turn on only with the exact word true', () => {
+  const cfg = loadConfig({
+    ...valid, MODERATION_ENABLED: 'true', LOGGING_ENABLED: 'yes', WELCOME_ENABLED: 'TRUE', ROLE_MENUS_ENABLED: 'true',
+  });
+  assert.deepEqual(cfg.features, { moderation: true, logging: false, welcome: false, roleMenus: true });
+});
+
+test('the database file defaults to data/lu.db and can be moved', () => {
+  assert.equal(loadConfig(valid).database.file, 'data/lu.db');
+  assert.equal(loadConfig({ ...valid, DATABASE_FILE: ' data/other.db ' }).database.file, 'data/other.db');
+});
+
+test('warns when a server feature is on but no server is allowed', () => {
+  const warnings = startupWarnings({
+    discord: { allowedChannels: ['123'], allowedGuilds: [] },
+    features: { moderation: true },
+  });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /DISCORD_ALLOWED_GUILDS/);
+});
+
+test('no server-feature warning when the features are off or a server is allowed', () => {
+  assert.deepEqual(startupWarnings({ discord: { allowedChannels: ['123'] }, features: { moderation: false } }), []);
+  assert.deepEqual(startupWarnings({
+    discord: { allowedChannels: [], allowedGuilds: ['g1'] }, features: { logging: true },
+  }), []);
+});

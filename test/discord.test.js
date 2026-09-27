@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS } from '../src/discord.js';
+import { GatewayIntentBits } from 'discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor } from '../src/discord.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
 //
@@ -401,4 +402,37 @@ test('mentions preserve Discord order and keep Lu in the middle', () => {
 // would have had to accept and ignore.
 test('the entry knows Lu\'s own id', () => {
   assert.equal(toEntry(view({ content: 'hello' }), { botId: 'bot' }).luId, 'bot');
+});
+
+// --- Intents (WP-1) ---
+// Discord refuses the whole login (close code 4014) when a privileged intent
+// is asked for but not enabled in the Developer Portal. So Server Members is
+// asked for only when a feature that needs it is switched on.
+
+const off = { moderation: false, logging: false, welcome: false, roleMenus: false };
+
+test('with every server feature off, only the three chat intents are asked for', () => {
+  assert.deepEqual(intentsFor({ features: off }).sort((a, b) => a - b), [
+    GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
+  ].sort((a, b) => a - b));
+});
+
+test('moderation, logging and welcome each need Server Members', () => {
+  for (const key of ['moderation', 'logging', 'welcome']) {
+    assert.ok(intentsFor({ features: { ...off, [key]: true } }).includes(GatewayIntentBits.GuildMembers), key);
+  }
+});
+
+test('role menus alone do not ask for the privileged intent', () => {
+  assert.ok(!intentsFor({ features: { ...off, roleMenus: true } }).includes(GatewayIntentBits.GuildMembers));
+});
+
+test('moderation and logging need the moderation intent; welcome does not', () => {
+  assert.ok(intentsFor({ features: { ...off, moderation: true } }).includes(GatewayIntentBits.GuildModeration));
+  assert.ok(intentsFor({ features: { ...off, logging: true } }).includes(GatewayIntentBits.GuildModeration));
+  assert.ok(!intentsFor({ features: { ...off, welcome: true } }).includes(GatewayIntentBits.GuildModeration));
+});
+
+test('a config with no features block asks for the chat intents only', () => {
+  assert.equal(intentsFor({}).length, 3);
 });

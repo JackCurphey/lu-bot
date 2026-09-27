@@ -17,6 +17,24 @@ export function shouldObserve(view, { botId, allowedChannels, allowedGuilds = []
   return allowedGuilds.includes(view.guildId) && !deniedChannels.includes(view.channelId);
 }
 
+// Discord refuses the whole login (close code 4014) when a privileged intent
+// is requested but not enabled in the Developer Portal -- chat would go down
+// with it. So Server Members (privileged) is requested only when a feature
+// that needs member events is on, and the portal switch is a precondition of
+// turning that feature on, not of deploying.
+export function intentsFor(config) {
+  const f = config.features ?? {};
+  const intents = [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ];
+  if (f.moderation || f.logging || f.welcome) intents.push(GatewayIntentBits.GuildMembers);
+  // Bans, unbans and audit-log entries. Not privileged.
+  if (f.moderation || f.logging) intents.push(GatewayIntentBits.GuildModeration);
+  return intents;
+}
+
 export const LU_NAME = 'Lu';
 
 export function toEntry(view, { botId }) {
@@ -192,11 +210,7 @@ function viewOf(message) {
 
 export async function startBot({ config, onMessage }) {
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
-    ],
+    intents: intentsFor(config),
   });
 
   // Client is an EventEmitter, and an 'error' event with no listener is

@@ -118,6 +118,17 @@ export function loadConfig(env) {
     weights,
   };
 
+  // Server-wide features (WP-1 onwards). Off unless the value is exactly
+  // "true": with no separate test bot (D5) their first run is live, so a typo
+  // must leave them off rather than on.
+  const on = (key) => env[key] === 'true';
+  const features = {
+    moderation: on('MODERATION_ENABLED'),
+    logging: on('LOGGING_ENABLED'),
+    welcome: on('WELCOME_ENABLED'),
+    roleMenus: on('ROLE_MENUS_ENABLED'),
+  };
+
   return {
     discord: {
       token: env.DISCORD_BOT_TOKEN,
@@ -170,6 +181,12 @@ export function loadConfig(env) {
       // repo. Gitignored -- this is runtime state, like the credit ledger.
       file: env.SUGGESTIONS_FILE?.trim() || 'data/suggestions.jsonl',
     },
+    features,
+    database: {
+      // Relative to the project root, resolved in src/index.js like the
+      // credit ledger. Gitignored runtime state.
+      file: env.DATABASE_FILE?.trim() || 'data/lu.db',
+    },
   };
 }
 
@@ -211,6 +228,16 @@ export function startupWarnings(config) {
         'weight above zero, or set MOOD_ENABLED=false to mean it.',
       );
     }
+  }
+  // The server-wide features act only in DISCORD_ALLOWED_GUILDS. On with no
+  // server allowed, they would do nothing, silently.
+  const features = config.features ?? {};
+  if (Object.values(features).some(Boolean) && allowedGuilds.length === 0) {
+    warnings.push(
+      'A server feature (moderation, logging, welcome or role menus) is on but ' +
+      'DISCORD_ALLOWED_GUILDS is empty: server features only act in allowed servers, ' +
+      'so it will do nothing.',
+    );
   }
   return warnings;
 }
