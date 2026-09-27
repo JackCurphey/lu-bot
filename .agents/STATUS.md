@@ -15,15 +15,18 @@
 > | :--- | :--- | :--- |
 > | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
 > | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
-> | 3 | Logging | planned: `docs/superpowers/plans/2026-09-27-wp3-logging.md`; executing (D37) |
+> | 3 | Logging | PR A built + reviewed on `feat/wp3-logging` (687 pass), not merged; PR B not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** plan WP-2 after the re-audit. Before moderation is switched
-> on, the owner must move Lu's role above the rank roles (Trooper, Sergeant…).
-> It is at position 18 of 40. View Audit Log is not granted; the other
-> permissions are. The Server Members intent is enabled in the portal.
+> **Next action:** with the owner's approval, open PR A, merge and deploy it,
+> set `LOGGING_ENABLED=true` on the mini, and live-check it in
+> lu-testing-environment. An admin must run `/log channel` (Manage Server).
+> Then do PR B (member logs). Note for WP-2: deletes currently `forget` stored
+> text, so a spammer's deleted messages won't be in a later ban's 5-message
+> snapshot; decide in WP-2. Before moderation is switched on, Lu's role must
+> move above the rank roles; View Audit Log is still not granted.
 >
 > Test command: `npm test` (`node --test`).
 >
