@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS } from '../src/discord.js';
+import { GatewayIntentBits, Partials, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler } from '../src/discord.js';
+import { createMessageStore } from '../src/message-store.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
 //
@@ -401,4 +403,273 @@ test('mentions preserve Discord order and keep Lu in the middle', () => {
 // would have had to accept and ignore.
 test('the entry knows Lu\'s own id', () => {
   assert.equal(toEntry(view({ content: 'hello' }), { botId: 'bot' }).luId, 'bot');
+});
+
+// --- Intents (WP-1) ---
+// Discord refuses the whole login (close code 4014) when a privileged intent
+// is asked for but not enabled in the Developer Portal. So Server Members is
+// asked for only when a feature that needs it is switched on.
+
+const off = { moderation: false, logging: false, welcome: false, roleMenus: false };
+
+test('with every server feature off, only the three chat intents are asked for', () => {
+  assert.deepEqual(intentsFor({ features: off }).sort((a, b) => a - b), [
+    GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
+  ].sort((a, b) => a - b));
+});
+
+test('moderation, logging and welcome each need Server Members', () => {
+  for (const key of ['moderation', 'logging', 'welcome']) {
+    assert.ok(intentsFor({ features: { ...off, [key]: true } }).includes(GatewayIntentBits.GuildMembers), key);
+  }
+});
+
+test('role menus alone do not ask for the privileged intent', () => {
+  assert.ok(!intentsFor({ features: { ...off, roleMenus: true } }).includes(GatewayIntentBits.GuildMembers));
+});
+
+test('moderation and logging need the moderation intent; welcome does not', () => {
+  assert.ok(intentsFor({ features: { ...off, moderation: true } }).includes(GatewayIntentBits.GuildModeration));
+  assert.ok(intentsFor({ features: { ...off, logging: true } }).includes(GatewayIntentBits.GuildModeration));
+  assert.ok(!intentsFor({ features: { ...off, welcome: true } }).includes(GatewayIntentBits.GuildModeration));
+});
+
+test('a config with no features block asks for the chat intents only', () => {
+  assert.equal(intentsFor({}).length, 3);
+});
+
+// --- Partials (final review F1) ---
+// Without Partials.Message / Partials.GuildMember, discord.js only synthesises
+// a partial for an uncached message/member -- MessageDelete, MessageUpdate and
+// GuildMemberRemove never fire for them. WP-2/WP-3 need those events, but only
+// when a feature that consumes them is on, so the default (every switch off)
+// stays exactly as it was before this task.
+
+test('with every server feature off, no partials are requested', () => {
+  assert.deepEqual(partialsFor({ features: off }), []);
+});
+
+test('moderation, logging and welcome each need the message and member partials', () => {
+  for (const key of ['moderation', 'logging', 'welcome']) {
+    const result = partialsFor({ features: { ...off, [key]: true } });
+    assert.ok(result.includes(Partials.Message), key);
+    assert.ok(result.includes(Partials.GuildMember), key);
+  }
+});
+
+test('role menus alone do not request partials', () => {
+  assert.deepEqual(partialsFor({ features: { ...off, roleMenus: true } }), []);
+});
+
+test('a config with no features block requests no partials', () => {
+  assert.deepEqual(partialsFor({}), []);
+});
+
+// --- Interaction adapter (WP-1) ---
+
+const fakeInteraction = (over = {}) => ({
+  commandName: 'ban', guildId: 'g1', channelId: 'c1',
+  user: { id: 'u1', username: 'sam', displayName: 'Sam' },
+  member: { displayName: 'Sammy' },
+  memberPermissions: { toArray: () => ['BanMembers', 'SendMessages'] },
+  options: {
+    data: [
+      { name: 'target', type: ApplicationCommandOptionType.User, value: 'u2', user: { id: 'u2', displayName: 'Bo' }, member: { displayName: 'Bobby' } },
+      { name: 'reason', type: ApplicationCommandOptionType.String, value: 'spam' },
+      { name: 'where', type: ApplicationCommandOptionType.Channel, value: 'c9', channel: { id: 'c9', name: 'logs' } },
+    ],
+  },
+  replied: false, deferred: false,
+  ...over,
+});
+
+test('an interaction becomes a plain view', () => {
+  const v = interactionView(fakeInteraction());
+  assert.equal(v.commandName, 'ban');
+  assert.equal(v.guildId, 'g1');
+  assert.deepEqual(v.user, { id: 'u1', name: 'Sammy' });
+  assert.deepEqual(v.memberPermissions, ['BanMembers', 'SendMessages']);
+  assert.deepEqual(v.options.target, { id: 'u2', name: 'Bobby' });
+  assert.equal(v.options.reason, 'spam');
+  assert.deepEqual(v.options.where, { id: 'c9', name: 'logs' });
+});
+
+test('an interaction outside a server has no guild and no permissions', () => {
+  const v = interactionView(fakeInteraction({ guildId: null, member: null, memberPermissions: null }));
+  assert.equal(v.guildId, null);
+  assert.deepEqual(v.memberPermissions, []);
+  assert.deepEqual(v.user, { id: 'u1', name: 'Sam' });
+});
+
+test('replies are private by default and can never ping', async () => {
+  const calls = [];
+  const it = fakeInteraction({ reply: async (o) => { calls.push(['reply', o]); } });
+  await createInteractionIo(it).reply({ content: 'hi @everyone' });
+  assert.equal(calls[0][0], 'reply');
+  assert.equal(calls[0][1].flags, MessageFlags.Ephemeral);
+  assert.deepEqual(calls[0][1].allowedMentions, { parse: [] });
+});
+
+test('a public reply has no ephemeral flag', async () => {
+  const calls = [];
+  const it = fakeInteraction({ reply: async (o) => { calls.push(o); } });
+  await createInteractionIo(it).reply({ content: 'x' }, { ephemeral: false });
+  assert.equal(calls[0].flags, undefined);
+});
+
+test('a second reply becomes a follow-up', async () => {
+  const calls = [];
+  const it = fakeInteraction({ replied: true, followUp: async (o) => { calls.push(['followUp', o]); } });
+  await createInteractionIo(it).reply({ content: 'x' });
+  assert.equal(calls[0][0], 'followUp');
+});
+
+// --- Message store feed (WP-1) ---
+
+const fakeMessage = (over = {}) => ({
+  id: 'm1', guildId: 'g1', channelId: 'c1', content: 'hello', createdTimestamp: 5, system: false,
+  author: { id: 'u1', bot: false, displayName: 'Sam' },
+  member: { displayName: 'Sammy' },
+  attachments: new Map([['a1', { name: 'cat.png' }]]),
+  ...over,
+});
+
+test('a guild message becomes a store record', () => {
+  assert.deepEqual(messageRecordOf(fakeMessage()), {
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'Sammy',
+    text: 'hello', attachments: ['cat.png'], at: 5,
+  });
+});
+
+test('bots, direct messages and system messages are not stored', () => {
+  assert.equal(messageRecordOf(fakeMessage({ author: { id: 'b', bot: true, displayName: 'B' } })), null);
+  assert.equal(messageRecordOf(fakeMessage({ guildId: null })), null);
+  assert.equal(messageRecordOf(fakeMessage({ system: true })), null);
+});
+
+// --- MessageUpdate handler ordering (final review F2) ---
+// The store must not be updated with the new text until any edit-log handler
+// has already emitted with the old text -- otherwise a future edit-log
+// listener calling messageStore.get(id) sees the NEW text.
+
+function fakeGuildEvents({ hasIt = true, onEmit = null } = {}) {
+  const calls = [];
+  return {
+    has: () => hasIt,
+    async emit(name, guildId, payload) {
+      calls.push({ name, guildId, payload });
+      if (onEmit) await onEmit(payload);
+    },
+    calls,
+  };
+}
+
+test('the store still has the old text while the emitted handler runs, and the new text after', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  let seenDuringEmit = null;
+  const guildEvents = fakeGuildEvents({
+    onEmit: async () => {
+      seenDuringEmit = messageStore.get('m1').text;
+    },
+  });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  const before = { id: 'm1', guildId: 'g1', content: 'old' };
+  const after = { id: 'm1', guildId: 'g1', content: 'new' };
+  await handler(before, after);
+
+  assert.equal(seenDuringEmit, 'old');
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('the emit carries [before, after] and the guild id of after', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = fakeGuildEvents();
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  const before = { id: 'm1', guildId: 'g1', content: 'old' };
+  const after = { id: 'm1', guildId: 'g1', content: 'new' };
+  await handler(before, after);
+
+  assert.equal(guildEvents.calls.length, 1);
+  assert.equal(guildEvents.calls[0].name, 'messageUpdate');
+  assert.equal(guildEvents.calls[0].guildId, 'g1');
+  assert.deepEqual(guildEvents.calls[0].payload, [before, after]);
+});
+
+test('with guildEvents null, the store still updates', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents: null });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('with messageStore null, the emit still happens', async () => {
+  const guildEvents = fakeGuildEvents();
+  const handler = createMessageUpdateHandler({ messageStore: null, guildEvents });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(guildEvents.calls.length, 1);
+});
+
+test('with guildEvents.has() false, no emit happens but the store still updates', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = fakeGuildEvents({ hasIt: false });
+  const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+  await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  assert.equal(guildEvents.calls.length, 0);
+  assert.equal(messageStore.get('m1').text, 'new');
+});
+
+test('a throwing guild handler does not prevent the store update', async () => {
+  const messageStore = createMessageStore();
+  messageStore.record({
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'A',
+    text: 'old', attachments: [], at: Date.now(),
+  });
+  const guildEvents = { has: () => true, emit: async () => { throw new Error('boom'); } };
+  const error = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    const handler = createMessageUpdateHandler({ messageStore, guildEvents });
+    await handler({ id: 'm1', content: 'old' }, { id: 'm1', guildId: 'g1', content: 'new' });
+  } finally {
+    console.error = error;
+  }
+  assert.equal(messageStore.get('m1').text, 'new');
+  assert.ok(errors.length > 0);
+});
+
+// --- Command registration (WP-1) ---
+
+test('commands are registered per guild, and one failure does not stop the rest', async () => {
+  const set = [];
+  const client = { guilds: { fetch: async (id) => {
+    if (id === 'bad') throw new Error('Missing Access');
+    return { commands: { set: async (defs) => { set.push([id, defs.length]); } } };
+  } } };
+  const warn = console.warn;
+  const warned = [];
+  console.warn = (m) => warned.push(m);
+  try {
+    await registerGuildCommands({ client, guildIds: ['bad', 'g1'], definitions: [{ name: 'x' }] });
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(set, [['g1', 1]]);
+  assert.match(warned.join('\n'), /bad.*Missing Access/);
 });

@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, Events, PermissionsBitField, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
 import { matchesMemberName } from './rename.js';
 
 // Every message in an allowed channel is passed on, so Lu can follow the
@@ -15,6 +15,37 @@ export function shouldObserve(view, { botId, allowedChannels, allowedGuilds = []
   // allowedGuilds -- no explicit guard needed, and one was removed here after a
   // mutation check showed it could be deleted without failing any test.
   return allowedGuilds.includes(view.guildId) && !deniedChannels.includes(view.channelId);
+}
+
+// Discord refuses the whole login (close code 4014) when a privileged intent
+// is requested but not enabled in the Developer Portal -- chat would go down
+// with it. So Server Members (privileged) is requested only when a feature
+// that needs member events is on, and the portal switch is a precondition of
+// turning that feature on, not of deploying.
+export function intentsFor(config) {
+  const f = config.features ?? {};
+  const intents = [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ];
+  if (f.moderation || f.logging || f.welcome) intents.push(GatewayIntentBits.GuildMembers);
+  // Bans, unbans and audit-log entries. Not privileged.
+  if (f.moderation || f.logging) intents.push(GatewayIntentBits.GuildModeration);
+  return intents;
+}
+
+// discord.js only synthesises a partial message/member for an object missing
+// from its cache when the matching Partials value is enabled -- otherwise
+// MessageDelete, MessageUpdate and GuildMemberRemove never fire for it at all
+// (node_modules/discord.js/src/client/actions/Action.js ~29-31). The message
+// cache is 200 per channel and empty after every restart, so without this,
+// WP-3 delete logging and WP-2 kick detection silently miss most events.
+// Requested only alongside the features that consume them, so with every
+// switch off the Client is constructed exactly as it was before this task.
+export function partialsFor(config) {
+  const f = config.features ?? {};
+  return (f.moderation || f.logging || f.welcome) ? [Partials.Message, Partials.GuildMember] : [];
 }
 
 export const LU_NAME = 'Lu';
@@ -168,6 +199,104 @@ export function startTyping({
   return { stop: () => clearIntervalImpl(id) };
 }
 
+// A slash command as plain data, so command handlers never touch discord.js.
+// Resolved options carry an id and a display name; everything else is its
+// raw value.
+export function interactionView(interaction) {
+  const options = {};
+  for (const o of interaction.options?.data ?? []) {
+    if (o.type === ApplicationCommandOptionType.User) {
+      options[o.name] = { id: o.user.id, name: o.member?.displayName ?? o.user.displayName };
+    } else if (o.channel) {
+      options[o.name] = { id: o.channel.id, name: o.channel.name };
+    } else if (o.role) {
+      options[o.name] = { id: o.role.id, name: o.role.name };
+    } else {
+      options[o.name] = o.value;
+    }
+  }
+  return {
+    commandName: interaction.commandName,
+    guildId: interaction.guildId ?? null,
+    channelId: interaction.channelId,
+    user: { id: interaction.user.id, name: interaction.member?.displayName ?? interaction.user.displayName },
+    memberPermissions: interaction.memberPermissions?.toArray() ?? [],
+    options,
+  };
+}
+
+// Private unless told otherwise, and never able to ping -- a reason typed by
+// a moderator can contain @everyone.
+export function createInteractionIo(interaction) {
+  return {
+    async reply(body, { ephemeral = true } = {}) {
+      const payload = {
+        ...body,
+        allowedMentions: { parse: [] },
+        ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
+      };
+      if (interaction.replied || interaction.deferred) return interaction.followUp(payload);
+      return interaction.reply(payload);
+    },
+  };
+}
+
+// What the message store keeps. Bots and system messages ("X pinned a
+// message") are not worth keeping; direct messages are not server business.
+export function messageRecordOf(message) {
+  if (!message.guildId || message.author?.bot || message.system) return null;
+  return {
+    id: message.id,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    authorId: message.author.id,
+    authorName: message.member?.displayName ?? message.author.displayName,
+    text: message.content ?? '',
+    attachments: [...(message.attachments?.values() ?? [])].map((a) => a.name),
+    at: message.createdTimestamp,
+  };
+}
+
+// Guild commands appear immediately (global ones can take an hour). A failure
+// in one guild -- most likely Lu was invited without the commands scope -- is
+// logged and does not stop the others or the bot.
+export async function registerGuildCommands({ client, guildIds, definitions }) {
+  for (const id of guildIds) {
+    try {
+      const guild = await client.guilds.fetch(id);
+      await guild.commands.set(definitions);
+      console.log(`Registered ${definitions.length} slash command(s) in guild ${id}.`);
+    } catch (err) {
+      console.warn(`Could not register slash commands in guild ${id}: ${err.message}`);
+    }
+  }
+}
+
+// A single MessageUpdate handler, so the emit-then-update order is fixed in
+// one place rather than depending on listener registration order. A future
+// edit-log handler reading messageStore.get(id) during the emit must still
+// see the OLD text -- the store is only updated once the emit has settled.
+// Each half catches its own error so a failing emit never stops the store
+// update, and a failing store update never stops (or is stopped by) the emit.
+export function createMessageUpdateHandler({ messageStore, guildEvents }) {
+  return async function handleMessageUpdate(before, after) {
+    if (guildEvents && guildEvents.has('messageUpdate')) {
+      try {
+        await guildEvents.emit('messageUpdate', after.guildId, [before, after]);
+      } catch (err) {
+        console.error('Failed to forward messageUpdate:', err);
+      }
+    }
+    if (messageStore) {
+      try {
+        if (after.content != null) messageStore.updateText(after.id, after.content);
+      } catch (err) {
+        console.error('Failed to update stored message:', err);
+      }
+    }
+  };
+}
+
 function viewOf(message) {
   return {
     id: message.id,
@@ -190,13 +319,10 @@ function viewOf(message) {
   };
 }
 
-export async function startBot({ config, onMessage }) {
+export async function startBot({ config, onMessage, commands = null, guildEvents = null, messageStore = null }) {
   const client = new Client({
-    intents: [
-      GatewayIntentBits.Guilds,
-      GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent,
-    ],
+    intents: intentsFor(config),
+    partials: partialsFor(config),
   });
 
   // Client is an EventEmitter, and an 'error' event with no listener is
@@ -209,6 +335,16 @@ export async function startBot({ config, onMessage }) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
+    // Recorded before the chat filter: logging needs every channel in the
+    // server, not only the ones Lu chats in.
+    if (messageStore && config.discord.allowedGuilds.includes(message.guildId)) {
+      try {
+        const record = messageRecordOf(message);
+        if (record) messageStore.record(record);
+      } catch (err) {
+        console.error('Failed to record message:', err);
+      }
+    }
     const view = viewOf(message);
     if (!shouldObserve(view, {
       botId: client.user.id,
@@ -224,6 +360,52 @@ export async function startBot({ config, onMessage }) {
       console.error('Failed to handle message:', err);
     }
   });
+
+  if (commands) {
+    client.once(Events.ClientReady, () => registerGuildCommands({
+      client, guildIds: config.discord.allowedGuilds, definitions: commands.definitions(),
+    }));
+    client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+      try {
+        await commands.handle(interactionView(interaction), createInteractionIo(interaction));
+      } catch (err) {
+        console.error('Failed to handle command:', err);
+      }
+    });
+  }
+
+  if (guildEvents) {
+    // Each discord.js event is forwarded as-is to the features that listen.
+    // Features that need plain data build it themselves (WP-2 onwards), so
+    // this layer stays a pass-through and the guild scoping lives in one place.
+    const forward = (event, name, guildOf) => {
+      client.on(event, async (...args) => {
+        if (!guildEvents.has(name)) return;
+        try {
+          await guildEvents.emit(name, guildOf(...args), args.length === 1 ? args[0] : args);
+        } catch (err) {
+          console.error(`Failed to forward ${name}:`, err);
+        }
+      });
+    };
+    forward(Events.GuildMemberAdd, 'memberAdd', (m) => m.guild.id);
+    forward(Events.GuildMemberRemove, 'memberRemove', (m) => m.guild.id);
+    forward(Events.GuildMemberUpdate, 'memberUpdate', (_before, after) => after.guild.id);
+    forward(Events.GuildBanAdd, 'banAdd', (ban) => ban.guild.id);
+    forward(Events.GuildBanRemove, 'banRemove', (ban) => ban.guild.id);
+    forward(Events.MessageDelete, 'messageDelete', (m) => m.guildId);
+    forward(Events.MessageBulkDelete, 'messageBulkDelete', (messages, channel) => channel.guildId);
+    forward(Events.GuildAuditLogEntryCreate, 'auditLogEntry', (_entry, guild) => guild.id);
+  }
+
+  // MessageUpdate needs its own registration (not the generic forward above):
+  // the store update must happen only after the guild-event emit has settled,
+  // so an edit-log handler reading the store during the emit still sees the
+  // old text (final review F2).
+  if (messageStore || guildEvents) {
+    client.on(Events.MessageUpdate, createMessageUpdateHandler({ messageStore, guildEvents }));
+  }
 
   await client.login(config.discord.token);
   return client;

@@ -18,6 +18,12 @@ data/announced-version.txt
 # Feature suggestions from the server (src/suggestions.js)
 data/suggestions.jsonl
 
+# Server features: settings, cases, role menus (src/db). WAL mode adds the
+# -wal and -shm files beside it.
+data/lu.db
+data/lu.db-wal
+data/lu.db-shm
+
 # Source texts (large; keep out of git)
 data/raw/
 
