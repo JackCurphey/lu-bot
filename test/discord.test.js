@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GatewayIntentBits } from 'discord.js';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor } from '../src/discord.js';
+import { GatewayIntentBits, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands } from '../src/discord.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
 //
@@ -435,4 +435,106 @@ test('moderation and logging need the moderation intent; welcome does not', () =
 
 test('a config with no features block asks for the chat intents only', () => {
   assert.equal(intentsFor({}).length, 3);
+});
+
+// --- Interaction adapter (WP-1) ---
+
+const fakeInteraction = (over = {}) => ({
+  commandName: 'ban', guildId: 'g1', channelId: 'c1',
+  user: { id: 'u1', username: 'sam', displayName: 'Sam' },
+  member: { displayName: 'Sammy' },
+  memberPermissions: { toArray: () => ['BanMembers', 'SendMessages'] },
+  options: {
+    data: [
+      { name: 'target', type: ApplicationCommandOptionType.User, value: 'u2', user: { id: 'u2', displayName: 'Bo' }, member: { displayName: 'Bobby' } },
+      { name: 'reason', type: ApplicationCommandOptionType.String, value: 'spam' },
+      { name: 'where', type: ApplicationCommandOptionType.Channel, value: 'c9', channel: { id: 'c9', name: 'logs' } },
+    ],
+  },
+  replied: false, deferred: false,
+  ...over,
+});
+
+test('an interaction becomes a plain view', () => {
+  const v = interactionView(fakeInteraction());
+  assert.equal(v.commandName, 'ban');
+  assert.equal(v.guildId, 'g1');
+  assert.deepEqual(v.user, { id: 'u1', name: 'Sammy' });
+  assert.deepEqual(v.memberPermissions, ['BanMembers', 'SendMessages']);
+  assert.deepEqual(v.options.target, { id: 'u2', name: 'Bobby' });
+  assert.equal(v.options.reason, 'spam');
+  assert.deepEqual(v.options.where, { id: 'c9', name: 'logs' });
+});
+
+test('an interaction outside a server has no guild and no permissions', () => {
+  const v = interactionView(fakeInteraction({ guildId: null, member: null, memberPermissions: null }));
+  assert.equal(v.guildId, null);
+  assert.deepEqual(v.memberPermissions, []);
+  assert.deepEqual(v.user, { id: 'u1', name: 'Sam' });
+});
+
+test('replies are private by default and can never ping', async () => {
+  const calls = [];
+  const it = fakeInteraction({ reply: async (o) => { calls.push(['reply', o]); } });
+  await createInteractionIo(it).reply({ content: 'hi @everyone' });
+  assert.equal(calls[0][0], 'reply');
+  assert.equal(calls[0][1].flags, MessageFlags.Ephemeral);
+  assert.deepEqual(calls[0][1].allowedMentions, { parse: [] });
+});
+
+test('a public reply has no ephemeral flag', async () => {
+  const calls = [];
+  const it = fakeInteraction({ reply: async (o) => { calls.push(o); } });
+  await createInteractionIo(it).reply({ content: 'x' }, { ephemeral: false });
+  assert.equal(calls[0].flags, undefined);
+});
+
+test('a second reply becomes a follow-up', async () => {
+  const calls = [];
+  const it = fakeInteraction({ replied: true, followUp: async (o) => { calls.push(['followUp', o]); } });
+  await createInteractionIo(it).reply({ content: 'x' });
+  assert.equal(calls[0][0], 'followUp');
+});
+
+// --- Message store feed (WP-1) ---
+
+const fakeMessage = (over = {}) => ({
+  id: 'm1', guildId: 'g1', channelId: 'c1', content: 'hello', createdTimestamp: 5, system: false,
+  author: { id: 'u1', bot: false, displayName: 'Sam' },
+  member: { displayName: 'Sammy' },
+  attachments: new Map([['a1', { name: 'cat.png' }]]),
+  ...over,
+});
+
+test('a guild message becomes a store record', () => {
+  assert.deepEqual(messageRecordOf(fakeMessage()), {
+    id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'Sammy',
+    text: 'hello', attachments: ['cat.png'], at: 5,
+  });
+});
+
+test('bots, direct messages and system messages are not stored', () => {
+  assert.equal(messageRecordOf(fakeMessage({ author: { id: 'b', bot: true, displayName: 'B' } })), null);
+  assert.equal(messageRecordOf(fakeMessage({ guildId: null })), null);
+  assert.equal(messageRecordOf(fakeMessage({ system: true })), null);
+});
+
+// --- Command registration (WP-1) ---
+
+test('commands are registered per guild, and one failure does not stop the rest', async () => {
+  const set = [];
+  const client = { guilds: { fetch: async (id) => {
+    if (id === 'bad') throw new Error('Missing Access');
+    return { commands: { set: async (defs) => { set.push([id, defs.length]); } } };
+  } } };
+  const warn = console.warn;
+  const warned = [];
+  console.warn = (m) => warned.push(m);
+  try {
+    await registerGuildCommands({ client, guildIds: ['bad', 'g1'], definitions: [{ name: 'x' }] });
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(set, [['g1', 1]]);
+  assert.match(warned.join('\n'), /bad.*Missing Access/);
 });

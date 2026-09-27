@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
+import { Client, GatewayIntentBits, Events, PermissionsBitField, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
 import { matchesMemberName } from './rename.js';
 
 // Every message in an allowed channel is passed on, so Lu can follow the
@@ -186,6 +186,79 @@ export function startTyping({
   return { stop: () => clearIntervalImpl(id) };
 }
 
+// A slash command as plain data, so command handlers never touch discord.js.
+// Resolved options carry an id and a display name; everything else is its
+// raw value.
+export function interactionView(interaction) {
+  const options = {};
+  for (const o of interaction.options?.data ?? []) {
+    if (o.type === ApplicationCommandOptionType.User) {
+      options[o.name] = { id: o.user.id, name: o.member?.displayName ?? o.user.displayName };
+    } else if (o.channel) {
+      options[o.name] = { id: o.channel.id, name: o.channel.name };
+    } else if (o.role) {
+      options[o.name] = { id: o.role.id, name: o.role.name };
+    } else {
+      options[o.name] = o.value;
+    }
+  }
+  return {
+    commandName: interaction.commandName,
+    guildId: interaction.guildId ?? null,
+    channelId: interaction.channelId,
+    user: { id: interaction.user.id, name: interaction.member?.displayName ?? interaction.user.displayName },
+    memberPermissions: interaction.memberPermissions?.toArray() ?? [],
+    options,
+  };
+}
+
+// Private unless told otherwise, and never able to ping -- a reason typed by
+// a moderator can contain @everyone.
+export function createInteractionIo(interaction) {
+  return {
+    async reply(body, { ephemeral = true } = {}) {
+      const payload = {
+        ...body,
+        allowedMentions: { parse: [] },
+        ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}),
+      };
+      if (interaction.replied || interaction.deferred) return interaction.followUp(payload);
+      return interaction.reply(payload);
+    },
+  };
+}
+
+// What the message store keeps. Bots and system messages ("X pinned a
+// message") are not worth keeping; direct messages are not server business.
+export function messageRecordOf(message) {
+  if (!message.guildId || message.author?.bot || message.system) return null;
+  return {
+    id: message.id,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    authorId: message.author.id,
+    authorName: message.member?.displayName ?? message.author.displayName,
+    text: message.content ?? '',
+    attachments: [...(message.attachments?.values() ?? [])].map((a) => a.name),
+    at: message.createdTimestamp,
+  };
+}
+
+// Guild commands appear immediately (global ones can take an hour). A failure
+// in one guild -- most likely Lu was invited without the commands scope -- is
+// logged and does not stop the others or the bot.
+export async function registerGuildCommands({ client, guildIds, definitions }) {
+  for (const id of guildIds) {
+    try {
+      const guild = await client.guilds.fetch(id);
+      await guild.commands.set(definitions);
+      console.log(`Registered ${definitions.length} slash command(s) in guild ${id}.`);
+    } catch (err) {
+      console.warn(`Could not register slash commands in guild ${id}: ${err.message}`);
+    }
+  }
+}
+
 function viewOf(message) {
   return {
     id: message.id,
@@ -208,7 +281,7 @@ function viewOf(message) {
   };
 }
 
-export async function startBot({ config, onMessage }) {
+export async function startBot({ config, onMessage, commands = null, guildEvents = null, messageStore = null }) {
   const client = new Client({
     intents: intentsFor(config),
   });
@@ -223,6 +296,16 @@ export async function startBot({ config, onMessage }) {
   });
 
   client.on(Events.MessageCreate, async (message) => {
+    // Recorded before the chat filter: logging needs every channel in the
+    // server, not only the ones Lu chats in.
+    if (messageStore && config.discord.allowedGuilds.includes(message.guildId)) {
+      try {
+        const record = messageRecordOf(message);
+        if (record) messageStore.record(record);
+      } catch (err) {
+        console.error('Failed to record message:', err);
+      }
+    }
     const view = viewOf(message);
     if (!shouldObserve(view, {
       botId: client.user.id,
@@ -238,6 +321,55 @@ export async function startBot({ config, onMessage }) {
       console.error('Failed to handle message:', err);
     }
   });
+
+  if (messageStore) {
+    client.on(Events.MessageUpdate, (_before, after) => {
+      try {
+        if (after.content != null) messageStore.updateText(after.id, after.content);
+      } catch (err) {
+        console.error('Failed to update stored message:', err);
+      }
+    });
+  }
+
+  if (commands) {
+    client.once(Events.ClientReady, () => registerGuildCommands({
+      client, guildIds: config.discord.allowedGuilds, definitions: commands.definitions(),
+    }));
+    client.on(Events.InteractionCreate, async (interaction) => {
+      if (!interaction.isChatInputCommand()) return;
+      try {
+        await commands.handle(interactionView(interaction), createInteractionIo(interaction));
+      } catch (err) {
+        console.error('Failed to handle command:', err);
+      }
+    });
+  }
+
+  if (guildEvents) {
+    // Each discord.js event is forwarded as-is to the features that listen.
+    // Features that need plain data build it themselves (WP-2 onwards), so
+    // this layer stays a pass-through and the guild scoping lives in one place.
+    const forward = (event, name, guildOf) => {
+      client.on(event, async (...args) => {
+        if (!guildEvents.has(name)) return;
+        try {
+          await guildEvents.emit(name, guildOf(...args), args.length === 1 ? args[0] : args);
+        } catch (err) {
+          console.error(`Failed to forward ${name}:`, err);
+        }
+      });
+    };
+    forward(Events.GuildMemberAdd, 'memberAdd', (m) => m.guild.id);
+    forward(Events.GuildMemberRemove, 'memberRemove', (m) => m.guild.id);
+    forward(Events.GuildMemberUpdate, 'memberUpdate', (_before, after) => after.guild.id);
+    forward(Events.GuildBanAdd, 'banAdd', (ban) => ban.guild.id);
+    forward(Events.GuildBanRemove, 'banRemove', (ban) => ban.guild.id);
+    forward(Events.MessageUpdate, 'messageUpdate', (_before, after) => after.guildId);
+    forward(Events.MessageDelete, 'messageDelete', (m) => m.guildId);
+    forward(Events.MessageBulkDelete, 'messageBulkDelete', (messages, channel) => channel.guildId);
+    forward(Events.GuildAuditLogEntryCreate, 'auditLogEntry', (_entry, guild) => guild.id);
+  }
 
   await client.login(config.discord.token);
   return client;
