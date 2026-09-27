@@ -6,6 +6,11 @@ const PERMANENT = new Set([10003, 50001, 50013]);
 
 export function createLogRouter({ logSettings, send, now = Date.now }) {
   return {
+    // Lets a handler that batches several authors (a bulk delete) test roles
+    // itself, entry by entry, instead of post()'s all-or-nothing role check.
+    isIgnoredAuthor(guildId, roleIds = []) {
+      return roleIds.some((id) => logSettings.isIgnoredRole(guildId, id));
+    },
     async post(guildId, category, payload, { channelId = null, authorRoleIds = [] } = {}) {
       const route = logSettings.route(guildId, category);
       if (!route) return 'off';

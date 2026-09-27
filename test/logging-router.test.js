@@ -65,6 +65,14 @@ test('losing access also switches the route off', async () => {
   }
 });
 
+test('isIgnoredAuthor is true when any given role is ignored', () => {
+  const { router, logSettings } = setup();
+  logSettings.ignoreRole('g1', 'mods');
+  assert.equal(router.isIgnoredAuthor('g1', ['x', 'mods']), true);
+  assert.equal(router.isIgnoredAuthor('g1', ['x', 'y']), false);
+  assert.equal(router.isIgnoredAuthor('g1', []), false);
+});
+
 test('a passing failure is logged and the route stays on', async () => {
   const { router, logSettings } = setup(async () => { throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); });
   assert.equal(await quiet(() => router.post('g1', 'messages', {}, { channelId: 'c1' })), 'failed');
