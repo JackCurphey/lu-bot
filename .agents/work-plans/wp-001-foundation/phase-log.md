@@ -18,4 +18,4 @@ Baseline before any change (2026-09-27): `npm test` → 564 pass, 0 fail.
 | 2026-09-27 | Final review fixes F1–F5 | 631 pass | F1 partialsFor forced []: red; F2 store-before-emit: red `'new' !== 'old'`; restored | 0ff833d, a0e09fb |
 
 Final whole-branch review (fresh context, most capable model): ready to merge; F1 (no partials) and F2 (edit text overwritten before handlers) fixed in the same wave, scoped re-review: all 5 addressed, no new breakage.
-Not yet done: deploy + the four live checks (Task 8 Step 8) — awaiting owner approval.
+Deployed 2026-09-27 18:05 (merged `6a3674f`). Live check 1 (registration log line) and check 2 (`data/lu.db` exists, schema v1) passed. Checks 3 (`/lu-status`) and 4 (chat) are with the owner.
