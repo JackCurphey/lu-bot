@@ -76,3 +76,16 @@ test('what is read back is a copy, not the stored record', () => {
   s.get('1').text = 'tampered';
   assert.equal(s.get('1').text, 'text 1');
 });
+
+test('author role ids are copied, not shared', () => {
+  const s = createMessageStore({ now: () => 0 });
+  s.record(msg('1', { authorRoleIds: ['r1'] }));
+  s.get('1').authorRoleIds.push('tampered');
+  assert.deepEqual(s.get('1').authorRoleIds, ['r1']);
+});
+
+test('a record without role ids reads back with an empty list', () => {
+  const s = createMessageStore({ now: () => 0 });
+  s.record(msg('1'));
+  assert.deepEqual(s.get('1').authorRoleIds, []);
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GatewayIntentBits, Partials, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler } from '../src/discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler, sendToChannel } from '../src/discord.js';
 import { createMessageStore } from '../src/message-store.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
@@ -537,7 +537,7 @@ const fakeMessage = (over = {}) => ({
 test('a guild message becomes a store record', () => {
   assert.deepEqual(messageRecordOf(fakeMessage()), {
     id: 'm1', guildId: 'g1', channelId: 'c1', authorId: 'u1', authorName: 'Sammy',
-    text: 'hello', attachments: ['cat.png'], at: 5,
+    text: 'hello', attachments: ['cat.png'], at: 5, authorRoleIds: [],
   });
 });
 
@@ -672,4 +672,48 @@ test('commands are registered per guild, and one failure does not stop the rest'
   }
   assert.deepEqual(set, [['g1', 1]]);
   assert.match(warned.join('\n'), /bad.*Missing Access/);
+});
+
+// --- WP-3 adapter groundwork ---
+
+test('a store record carries the author role ids, without @everyone', () => {
+  const member = { displayName: 'Sammy', roles: { cache: new Map([['g1', {}], ['r1', {}], ['r2', {}]]) } };
+  assert.deepEqual(messageRecordOf(fakeMessage({ member })).authorRoleIds, ['r1', 'r2']);
+});
+
+test('a sub-command becomes view.subcommand, with its own options', () => {
+  const v = interactionView(fakeInteraction({
+    commandName: 'log',
+    options: { data: [{
+      name: 'channel', type: ApplicationCommandOptionType.Subcommand,
+      options: [
+        { name: 'category', type: ApplicationCommandOptionType.String, value: 'messages' },
+        { name: 'channel', type: ApplicationCommandOptionType.Channel, value: 'c9', channel: { id: 'c9', name: 'logs' } },
+      ],
+    }] },
+  }));
+  assert.equal(v.subcommand, 'channel');
+  assert.equal(v.options.category, 'messages');
+  assert.deepEqual(v.options.channel, { id: 'c9', name: 'logs' });
+});
+
+test('a command without sub-commands has subcommand null', () => {
+  assert.equal(interactionView(fakeInteraction()).subcommand, null);
+});
+
+test('sendToChannel posts with pings disabled', async () => {
+  const sent = [];
+  const client = { channels: { fetch: async () => ({ isTextBased: () => true, send: async (p) => { sent.push(p); return { id: 'm' }; } }) } };
+  await sendToChannel(client, 'c1', { content: 'hi @everyone' });
+  assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+  assert.equal(sent[0].content, 'hi @everyone');
+});
+
+test('sendToChannel refuses a non-text channel with the unknown-channel code', async () => {
+  const client = { channels: { fetch: async () => ({ isTextBased: () => false }) } };
+  await assert.rejects(sendToChannel(client, 'c1', {}), (err) => err.code === 10003);
+});
+
+test('sendToChannel before connecting says so', async () => {
+  await assert.rejects(sendToChannel(null, 'c1', {}), /Not connected/);
 });

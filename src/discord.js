@@ -203,8 +203,15 @@ export function startTyping({
 // Resolved options carry an id and a display name; everything else is its
 // raw value.
 export function interactionView(interaction) {
+  let data = interaction.options?.data ?? [];
+  let subcommand = null;
+  // "/log channel ..." arrives as one Subcommand option wrapping the real ones.
+  if (data[0]?.type === ApplicationCommandOptionType.Subcommand) {
+    subcommand = data[0].name;
+    data = data[0].options ?? [];
+  }
   const options = {};
-  for (const o of interaction.options?.data ?? []) {
+  for (const o of data) {
     if (o.type === ApplicationCommandOptionType.User) {
       options[o.name] = { id: o.user.id, name: o.member?.displayName ?? o.user.displayName };
     } else if (o.channel) {
@@ -217,6 +224,7 @@ export function interactionView(interaction) {
   }
   return {
     commandName: interaction.commandName,
+    subcommand,
     guildId: interaction.guildId ?? null,
     channelId: interaction.channelId,
     user: { id: interaction.user.id, name: interaction.member?.displayName ?? interaction.user.displayName },
@@ -254,6 +262,9 @@ export function messageRecordOf(message) {
     text: message.content ?? '',
     attachments: [...(message.attachments?.values() ?? [])].map((a) => a.name),
     at: message.createdTimestamp,
+    // Needed to honour "/log ignore @role" for a message deleted later. The
+    // @everyone role's id is the guild id; every member has it, so it is noise.
+    authorRoleIds: [...(message.member?.roles?.cache?.keys() ?? [])].filter((id) => id !== message.guildId),
   };
 }
 
@@ -270,6 +281,20 @@ export async function registerGuildCommands({ client, guildIds, definitions }) {
       console.warn(`Could not register slash commands in guild ${id}: ${err.message}`);
     }
   }
+}
+
+// Posts to a channel by id: logging's only way out. Discord's own error codes
+// are kept on the thrown error, because the log router tells a channel that
+// is gone (10003) or closed to Lu (50001, 50013) from a passing failure.
+export async function sendToChannel(client, channelId, payload) {
+  if (!client) throw new Error('Not connected to Discord yet');
+  const channel = await client.channels.fetch(channelId);
+  if (!channel?.isTextBased?.()) {
+    const err = new Error('Not a text channel');
+    err.code = 10003;
+    throw err;
+  }
+  return channel.send({ ...payload, allowedMentions: { parse: [] } });
 }
 
 // A single MessageUpdate handler, so the emit-then-update order is fixed in

@@ -10,7 +10,7 @@ export function createMessageStore({ ttlMs = 86_400_000, max = 10_000, now = Dat
   const byId = new Map();
 
   const expired = (m) => now() - m.at > ttlMs;
-  const copy = (m) => ({ ...m, attachments: [...m.attachments] });
+  const copy = (m) => ({ ...m, attachments: [...m.attachments], authorRoleIds: [...(m.authorRoleIds ?? [])] });
 
   function live(id) {
     const m = byId.get(id);
