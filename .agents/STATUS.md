@@ -1,7 +1,8 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: pre-kickoff. Spec written, awaiting the owner's review.**
+> Phase: kicked-off. Spec approved; WP-1 plan written, awaiting the owner's nod
+> on its three spec deltas and the execution choice.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
 > Decisions D22–D31, deferrals DF10–DF12. Branch
@@ -12,15 +13,17 @@
 >
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
-> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | next: plan after spec approval |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | planned: `docs/superpowers/plans/2026-09-27-wp1-foundation.md` |
 > | 2 | Moderation with case history | not started |
 > | 3 | Logging | not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** the owner reviews the spec. Then write the WP-1 plan with
-> writing-plans. Blockers before WP-1 deploys: Server Members intent enabled
+> **Next action:** the owner approves the WP-1 plan's three deltas, then
+> execute it. Membership screening is ON in Cry's Cantina (checked via API);
+> WP-4 must handle pending members. Server Members is requested only when a
+> feature needing it is on, since Discord refuses the whole login otherwise. Blockers before WP-1 deploys: Server Members intent enabled
 > in the Developer Portal; Lu's role given the permissions and position the spec lists.
 >
 > Test command: `npm test` (`node --test`).
