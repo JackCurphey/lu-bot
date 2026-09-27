@@ -297,6 +297,19 @@ export async function sendToChannel(client, channelId, payload) {
   return channel.send({ ...payload, allowedMentions: { parse: [] } });
 }
 
+// Checked before /log channel saves a route: real log entries are embeds,
+// and bulk deletes carry a file, so Lu needs more than the plain test line
+// implies. permissionsFor(member) is documented for both a text channel
+// (node_modules/discord.js/typings/index.d.ts:1838) and a thread
+// (index.d.ts:3970); it returns null when it cannot resolve the member (here,
+// Lu's own client user), which is treated as lacking everything asked for.
+export async function missingChannelPermissions(client, channelId, needed) {
+  const channel = await client.channels.fetch(channelId);
+  const perms = channel?.permissionsFor?.(client.user) ?? null;
+  if (!perms) return [...needed];
+  return needed.filter((name) => !perms.has(name));
+}
+
 // A single MessageUpdate handler, so the emit-then-update order is fixed in
 // one place rather than depending on listener registration order. A future
 // edit-log handler reading messageStore.get(id) during the emit must still

@@ -5,10 +5,14 @@ import { createSettings } from '../src/settings.js';
 import { createLogSettings } from '../src/logging/settings.js';
 import { createLogCommand } from '../src/logging/commands.js';
 
-const setup = (send) => {
+const setup = (send, missingPermissions) => {
   const logSettings = createLogSettings(createSettings(openDatabase({ file: ':memory:' })));
   const sent = [];
-  const cmd = createLogCommand({ logSettings, send: send ?? (async (channelId, payload) => { sent.push([channelId, payload]); }) });
+  const cmd = createLogCommand({
+    logSettings,
+    send: send ?? (async (channelId, payload) => { sent.push([channelId, payload]); }),
+    missingPermissions: missingPermissions ?? (async () => []),
+  });
   const run = async (subcommand, options = {}) => {
     const replies = [];
     await cmd.run({ view: { guildId: 'g1', subcommand, options }, reply: async (body) => { replies.push(body.content); } });
@@ -40,6 +44,24 @@ test('/log channel does not save a channel Lu cannot post in', async () => {
   const reply = await run('channel', { category: 'messages', channel: { id: 'c9', name: 'logs' } });
   assert.equal(logSettings.route('g1', 'messages'), null);
   assert.match(reply, /can't post in <#c9>/);
+});
+
+test('/log channel refuses a channel Lu lacks Attach Files in, without sending the test line', async () => {
+  const sent = [];
+  const send = async (channelId, payload) => { sent.push([channelId, payload]); };
+  const { logSettings, run } = setup(send, async () => ['AttachFiles']);
+  const reply = await run('channel', { category: 'messages', channel: { id: 'c9', name: 'logs' } });
+  assert.match(reply, /Attach Files/);
+  assert.equal(sent.length, 0);
+  assert.equal(logSettings.route('g1', 'messages'), null);
+});
+
+test('/log channel proceeds as today when nothing is missing', async () => {
+  const { logSettings, sent, run } = setup(undefined, async () => []);
+  const reply = await run('channel', { category: 'messages', channel: { id: 'c9', name: 'logs' } });
+  assert.equal(sent[0][0], 'c9');
+  assert.equal(logSettings.route('g1', 'messages'), 'c9');
+  assert.match(reply, /Message logs will go to <#c9>/);
 });
 
 test('/log off stops a category', async () => {

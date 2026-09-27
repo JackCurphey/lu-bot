@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GatewayIntentBits, Partials, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler, sendToChannel } from '../src/discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler, sendToChannel, missingChannelPermissions } from '../src/discord.js';
 import { createMessageStore } from '../src/message-store.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
@@ -716,4 +716,42 @@ test('sendToChannel refuses a non-text channel with the unknown-channel code', a
 
 test('sendToChannel before connecting says so', async () => {
   await assert.rejects(sendToChannel(null, 'c1', {}), /Not connected/);
+});
+
+test('missingChannelPermissions reports only the names Lu lacks', async () => {
+  const have = new Set(['ViewChannel', 'SendMessages']);
+  const client = {
+    user: { id: 'bot' },
+    channels: {
+      fetch: async () => ({
+        permissionsFor: () => ({ has: (name) => have.has(name) }),
+      }),
+    },
+  };
+  const missing = await missingChannelPermissions(client, 'c1', ['ViewChannel', 'SendMessages', 'EmbedLinks', 'AttachFiles']);
+  assert.deepEqual(missing, ['EmbedLinks', 'AttachFiles']);
+});
+
+test('missingChannelPermissions returns nothing missing when Lu has every permission', async () => {
+  const client = {
+    user: { id: 'bot' },
+    channels: { fetch: async () => ({ permissionsFor: () => ({ has: () => true }) }) },
+  };
+  assert.deepEqual(await missingChannelPermissions(client, 'c1', ['ViewChannel', 'SendMessages']), []);
+});
+
+test('missingChannelPermissions treats a null permissionsFor as missing everything', async () => {
+  const client = {
+    user: { id: 'bot' },
+    channels: { fetch: async () => ({ permissionsFor: () => null }) },
+  };
+  assert.deepEqual(await missingChannelPermissions(client, 'c1', ['ViewChannel', 'AttachFiles']), ['ViewChannel', 'AttachFiles']);
+});
+
+test('missingChannelPermissions throws, keeping the code, when the fetch fails', async () => {
+  const client = {
+    user: { id: 'bot' },
+    channels: { fetch: async () => { throw Object.assign(new Error('Missing Access'), { code: 50001 }); } },
+  };
+  await assert.rejects(missingChannelPermissions(client, 'c1', ['ViewChannel']), (err) => err.code === 50001);
 });

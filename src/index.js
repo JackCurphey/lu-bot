@@ -7,7 +7,7 @@ import { loadPersona } from './persona.js';
 import { respondWithReason } from './responder.js';
 import { loadCorpus, search } from './corpus/store.js';
 import { shouldUseCorpus } from './judge.js';
-import { startBot, sendToChannel } from './discord.js';
+import { startBot, sendToChannel, missingChannelPermissions } from './discord.js';
 import { createHistory } from './history.js';
 import { createDecisionLog } from './decisions.js';
 import { isAddressedToLu, hasModel } from './addressee.js';
@@ -159,7 +159,13 @@ if (config.features.logging) {
     guildEvents.on('messageDelete', messageLogs.onDelete);
     guildEvents.on('messageUpdate', messageLogs.onEdit);
     guildEvents.on('messageBulkDelete', messageLogs.onBulkDelete);
-    commands.register(createLogCommand({ logSettings, send }));
+    commands.register(createLogCommand({
+      logSettings,
+      send,
+      missingPermissions: (channelId) => missingChannelPermissions(
+        discord.client, channelId, ['ViewChannel', 'SendMessages', 'EmbedLinks', 'AttachFiles'],
+      ),
+    }));
   }
 }
 

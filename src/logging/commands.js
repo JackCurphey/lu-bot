@@ -26,7 +26,10 @@ const textChannel = (description, required) => ({
 const roleOption = { type: ApplicationCommandOptionType.Role, name: 'role', description: 'A role', required: false };
 const sub = (name, description, options = []) => ({ type: ApplicationCommandOptionType.Subcommand, name, description, options });
 
-export function createLogCommand({ logSettings, send }) {
+// 'EmbedLinks' -> 'Embed Links'.
+const splitCamel = (name) => name.replace(/([A-Z])/g, ' $1').trim();
+
+export function createLogCommand({ logSettings, send, missingPermissions }) {
   const one = (o) => {
     const picked = [o.channel ? 'channel' : null, o.role ? 'role' : null].filter(Boolean);
     return picked.length === 1 ? picked[0] : null;
@@ -49,7 +52,20 @@ export function createLogCommand({ logSettings, send }) {
       const o = view.options ?? {};
       switch (view.subcommand) {
         case 'channel': {
-          // A test line first: a channel Lu cannot post in is caught now, not
+          // Real entries are embeds, and bulk deletes carry a file -- caught
+          // here, before the test line, so a channel missing Embed Links or
+          // Attach Files is never saved as a route that will fail later.
+          try {
+            const missing = await missingPermissions(o.channel.id);
+            if (missing.length > 0) {
+              await reply({ content: `I need these permissions in <#${o.channel.id}> first: ${missing.map(splitCamel).join(', ')}` });
+              return;
+            }
+          } catch (err) {
+            await reply({ content: `I can't post in <#${o.channel.id}> (${err.message}). Check my permissions there and try again.` });
+            return;
+          }
+          // A test line too: a channel Lu cannot post in is caught now, not
           // on the first deleted message.
           try {
             await send(o.channel.id, { content: `${LABEL[o.category]} will be posted here.` });
