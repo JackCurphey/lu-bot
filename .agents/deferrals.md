@@ -11,3 +11,6 @@
 | DF7 | Synchronous-throw gap in `startTyping` (`src/discord.js`) | Minor; cannot fire against real discord.js | controller | Final whole-branch review |
 | DF8 | Abort signal for corpus retrieval during a reply timeout | Not load-bearing while no corpus exists; `chooseChunks`/`shouldUseCorpus` get no abort signal, so after a reply timeout a corpus call can overlap the next job | controller | Becomes real once a corpus is ingested |
 | DF9 | Ollama's context window (4096 tokens) vs corpus chunk size | Stage 1's prompts (~600-1300 tokens) fit; up to 5 retrieved chunks of ~600 words each could exceed it | controller | Before corpus ingestion ships |
+| DF10 | Moderation extras: auto-expiring bans, mass/name bans, channel lock, reports, preset reasons, immune roles | Outside the core set (D25) | user | After sub-project 2 is live, if the server asks for them |
+| DF11 | Server-structure logging: channels, roles, emoji, invites, voice, server settings | Noisy; doubles sub-project 3 (D27) | user | After sub-project 3 is live |
+| DF12 | Import Sapphire's case history | Whether Sapphire offers an export was not checked | user | Before Sapphire is removed |

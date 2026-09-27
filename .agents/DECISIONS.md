@@ -32,3 +32,20 @@ Supersede with a new entry; never rewrite an old one.
 | D19 | No role rewards at level thresholds, this stage | Needs Manage Roles, role-hierarchy handling, and a stack-versus-replace policy — real complexity for a server this size; straightforward to add later | user |
 | D20 | Voice credits sequenced as phase 2, after text credits ship and have been lived with | It is a second subsystem (new intent, new listener, time-driven tests), not a variation on the first | user |
 | D21 | Exact user-facing wording approved as rendered | The user was shown the real rendered output of every user-facing message plus the persona fragment before it shipped, and approved it as-is (lowercase deadpan register matching Lu's existing voice), with one change: an unnamed leaderboard entry renders as `<userId>` rather than a bare number, so it reads as a placeholder rather than a name | user |
+
+## 2026-09-27 — Lu replaces Sapphire in Cry's Cantina
+
+Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
+
+| # | Decision | Rationale | Approver |
+|---|---|---|---|
+| D22 | New features are configured by slash commands now, and by a web settings page on the owner's domain later (sub-project 6) | Discord permission gating and autocomplete; the page is a second front end on the same settings. D16 (regex commands) still stands for credits | user |
+| D23 | New data in SQLite via built-in `node:sqlite` at `data/lu.db`; no new dependency | Cases need querying, safe numbering and a second reader (web page). Confirmed working on the mini's Node v26.8.1. D18 (JSON) still stands for credits, which are not migrated | user |
+| D24 | Scope is a likely core set, not an audit of what Sapphire does in the server | Owner's choice (option 3); gaps surface at rollout when each Sapphire feature is switched off | user |
+| D25 | Moderation: warn, timeout, kick, ban/unban, purge, case lookup/history/reason edit; manual Discord actions recorded as cases via audit log | Core set; auto-expiring bans and Sapphire's extras deferred (DF10) | user |
+| D26 | Moderation replies ephemeral by default, with a setting for public; never in Lu's voice | A punishment notice must be exact, not in character. The default was Claude's call and was shown to the owner, who accepted the section | user |
+| D27 | Logging: messages, members, moderation, member changes; deleted-message text kept in memory only, 24 h / 10,000 messages | Keeps the README's in-memory promise; server-structure logging deferred (DF11) | user |
+| D28 | Cases store a 5-message snapshot on disk; README updated to say so | Owner saw and accepted the change to the privacy promise | user |
+| D29 | Welcomes and leaves written in character by the LLM, plain voice (no mischief modes), 20 s fallback to fixed templates, >3 joins/60 s collapses to one fixed message, welcomes ahead of queued chat | Owner chose in-character; the safeguards were Claude's design, accepted by the owner | user |
+| D30 | Role menus use buttons/dropdowns, not emoji reactions; pick-any and pick-one; roles carrying moderation powers can never be added | Survives restarts, confirms to the member, no reactions intent; Sapphire's reaction messages are replaced, not taken over | user |
+| D31 | All features live in the existing lu-bot process, one directory each, each behind an `.env` switch that defaults to off; Sapphire stays in until each feature is checked live | One gateway connection and service; D5 means no test bot, so switches plus staged cut-over are the safety net | user |

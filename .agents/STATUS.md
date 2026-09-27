@@ -1,5 +1,37 @@
 # Lu Bot — status
 
+> **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
+> Phase: pre-kickoff. Spec written, awaiting the owner's review.**
+>
+> Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
+> Decisions D22–D31, deferrals DF10–DF12. Branch
+> `docs/sapphire-replacement-spec`, stacked on `docs/bonsai-benchmark`.
+>
+> Work-package register (one active at a time, each with its own plan in
+> `.agents/work-plans/`):
+>
+> | WP | Sub-project | State |
+> | :--- | :--- | :--- |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | next: plan after spec approval |
+> | 2 | Moderation with case history | not started |
+> | 3 | Logging | not started |
+> | 4 | Welcomes, leaves, join roles | not started |
+> | 5 | Role menus | not started |
+> | 6 | Web settings page (own design pass) | not started |
+>
+> **Next action:** the owner reviews the spec. Then write the WP-1 plan with
+> writing-plans. Blockers before WP-1 deploys: Server Members intent enabled
+> in the Developer Portal; Lu's role given the permissions and position the spec lists.
+>
+> Test command: `npm test` (`node --test`).
+>
+> Also 2026-09-27: `DISCORD_ALLOWED_CHANNELS=1537304953704423527` set in the
+> mini's `.env` (a thread in guild `781966929198841886`), service restarted,
+> `Lu Bot is online`. Backup `~/lu-bot-env-before-thread-<timestamp>.bak`.
+>
+> STATUS is over its 8,000-byte cap (was 32,587 before this entry); trimming
+> it to ARCHIVE.md is still to do.
+
 > **2026-09-19: Bonsai on the mini is measured and rejected — it is ~8x slower
 > than qwen3:4b. No code change; this entry exists so nobody re-opens it.**
 >
