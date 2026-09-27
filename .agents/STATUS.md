@@ -15,7 +15,7 @@
 > | :--- | :--- | :--- |
 > | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
 > | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
-> | 3 | Logging | planned: `docs/superpowers/plans/2026-09-27-wp3-logging.md`; awaiting the owner's nod on appearance + DF13 |
+> | 3 | Logging | planned: `docs/superpowers/plans/2026-09-27-wp3-logging.md`; executing (D37) |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
