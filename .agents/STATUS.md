@@ -1,8 +1,16 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: wp-active (WP-1). Built and reviewed on `feat/wp1-foundation`
-> (631 tests pass); NOT deployed — awaiting the owner's approval to deploy.**
+> Phase: wp-active (WP-1). Merged (PR #1, `6a3674f`) and deployed 18:05 as
+> v1.2, all switches off. Live checks 1–2 passed; 3–4 await the owner.**
+>
+> Deploy: backup `~/lu-bot-backup-cc2ee16-20260927-180550.tar.gz`, rsync from
+> `git ls-files`, no `--delete`, marker `6a3674f`, kickstart. PID 2016. Log:
+> `Registered 1 slash command(s) in guild 1321631568976150588.`, `Lu Bot is
+> online.`, `Announced v1.2.` `data/lu.db` exists with schema version 1 and 0
+> settings. `bot.err.log` last written Sep 13, so nothing new. Waiting on the
+> owner: `/lu-status` in lu-testing-environment shows v1.2, all four features
+> off and `database: ok`; chat still answers.
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
 > Decisions D22–D31, deferrals DF10–DF12. Branch
@@ -13,16 +21,15 @@
 >
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
-> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | built + reviewed, not deployed; evidence in `.agents/work-plans/wp-001-foundation/phase-log.md` |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | merged + deployed v1.2; live checks 3–4 pending; evidence in `.agents/work-plans/wp-001-foundation/phase-log.md` |
 > | 2 | Moderation with case history | not started |
 > | 3 | Logging | not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** with the owner's approval, deploy WP-1 (all switches off)
-> and run the four live checks in the plan's Task 8 Step 8; live tests go in
-> lu-testing-environment (`1538590653611515954`, D33). Then close WP-1 and
+> **Next action:** the owner runs live checks 3–4 in lu-testing-environment
+> (`1538590653611515954`, D33). Then close WP-1 and
 > re-audit before planning WP-2. WP-2 must add typed per-feature settings
 > wrappers. Membership screening is ON in Cry's Cantina; WP-4 must handle
 > pending members.

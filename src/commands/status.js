@@ -6,7 +6,9 @@ export function createStatusCommand({ version, features, databaseOk }) {
   return {
     name: 'lu-status',
     description: "Lu's version and which of his server features are switched on",
-    permission: 'ManageGuild',
+    // Open to everyone: version and switches only. Moderation commands keep
+    // their limits.
+    permission: null,
     async run({ reply }) {
       const lines = [
         `Lu v${version}`,

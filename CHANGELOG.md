@@ -6,6 +6,10 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.3 — 2026-09-27
+
+- anyone can use /lu-status now, not just people with the manage server permission
+
 ## v1.2 — 2026-09-27
 
 - lu has his first slash command: /lu-status shows his version and which of his new server features are switched on (you need the manage server permission)
