@@ -1,8 +1,8 @@
 # Lu Bot — status
 
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
-> Phase: kicked-off. Spec approved; WP-1 plan written, awaiting the owner's nod
-> on its three spec deltas and the execution choice.**
+> Phase: wp-active (WP-1). Built and reviewed on `feat/wp1-foundation`
+> (631 tests pass); NOT deployed — awaiting the owner's approval to deploy.**
 >
 > Spec: `docs/superpowers/specs/2026-09-27-sapphire-replacement-design.md`.
 > Decisions D22–D31, deferrals DF10–DF12. Branch
@@ -13,18 +13,19 @@
 >
 > | WP | Sub-project | State |
 > | :--- | :--- | :--- |
-> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | planned: `docs/superpowers/plans/2026-09-27-wp1-foundation.md` |
+> | 1 | Foundation: SQLite, slash commands, intents, settings, message store | built + reviewed, not deployed; evidence in `.agents/work-plans/wp-001-foundation/phase-log.md` |
 > | 2 | Moderation with case history | not started |
 > | 3 | Logging | not started |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** the owner approves the WP-1 plan's three deltas, then
-> execute it. Membership screening is ON in Cry's Cantina (checked via API);
-> WP-4 must handle pending members. Server Members is requested only when a
-> feature needing it is on, since Discord refuses the whole login otherwise. Blockers before WP-1 deploys: Server Members intent enabled
-> in the Developer Portal; Lu's role given the permissions and position the spec lists.
+> **Next action:** with the owner's approval, deploy WP-1 (all switches off)
+> and run the four live checks in the plan's Task 8 Step 8; live tests go in
+> lu-testing-environment (`1538590653611515954`, D33). Then close WP-1 and
+> re-audit before planning WP-2. WP-2 must add typed per-feature settings
+> wrappers. Membership screening is ON in Cry's Cantina; WP-4 must handle
+> pending members.
 >
 > Test command: `npm test` (`node --test`).
 >
