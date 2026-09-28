@@ -15,23 +15,25 @@
 > | :--- | :--- | :--- |
 > | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
 > | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
-> | 3 | Logging | PR A merged (#3, `ba00dc2`) + deployed v1.4, LOGGING_ENABLED=true; live check pending; PR B next on `feat/wp3b-member-logs` |
+> | 3 | Logging | PR A (#3) and PR B (#4) merged; v1.5 live 2026-09-28 with LOGGING_ENABLED=true; live check of member logs pending |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Deployed 2026-09-27 19:52:** backup `~/lu-bot-backup-d9a1139-20260927-195224.tar.gz`,
-> `.env` backup `~/lu-bot-env-before-logging-20260927-195224.bak`, then
-> `LOGGING_ENABLED=true` appended. PID 2645. The log shows `Registered 2 slash
-> command(s)` and `Announced v1.4`; the login with Server Members succeeded.
-> Discord lists `/log` with Manage Server (32) and five sub-commands.
+> **Deployed 2026-09-28 07:04 (v1.5, `b6ef7c3`):** member logging (#4) and
+> "lu stop" (#5, D38). Backup `~/lu-bot-backup-ba00dc2-20260928-070448.tar.gz`.
+> PID 5829. The log shows `Loaded 141 members`, `Registered 2 slash command(s)`
+> and `Announced v1.5`. LOGGING_ENABLED=true since v1.4 (`.env` backup
+> `~/lu-bot-env-before-logging-20260927-195224.bak`).
 >
-> **Next action:** the live check. An admin runs
-> `/log channel messages #lu-testing-environment`; then post, edit and delete a
-> line. Then PR B (member logs). For WP-2: deletes `forget` stored text, so a
-> spammer's deleted messages miss a later ban snapshot; decide in WP-2. Lu's
-> role must move above the rank roles before moderation is switched on. View
-> Audit Log is still not granted.
+> **Next action:** live checks in lu-testing-environment. An admin runs
+> `/log channel messages|members|member changes`; post, edit and delete a line;
+> change a test account's nickname or role; "lu stop", then "lu you can talk".
+> Then close WP-3 and re-audit WP-2. WP-2's three open deltas await the owner.
+> Deletes `forget` stored text, so ban snapshots miss self-deleted messages;
+> decide that in WP-2. Before moderation is switched on, Lu's role must move
+> above the rank roles and View Audit Log is still not granted. Expect a
+> "Roles changed" entry after most joins, from Discord Onboarding.
 >
 > Test command: `npm test` (`node --test`).
 >
