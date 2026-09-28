@@ -112,7 +112,7 @@ export function createLogCommand({ logSettings, send, missingPermissions }) {
           const { channels, roles } = logSettings.ignored(g);
           lines.push(`Ignored channels: ${channels.length ? channels.map((id) => `<#${id}>`).join(' ') : 'none'}`);
           lines.push(`Ignored roles: ${roles.length ? roles.map((id) => `<@&${id}>`).join(' ') : 'none'}`);
-          lines.push('Moderation logs start when moderation is switched on. Who deleted a message is not shown yet.');
+          lines.push('Moderation logs start when moderation is switched on. Who deleted a message or changed a member is not shown yet.');
           await reply({ content: lines.join('\n') });
           return;
         }
