@@ -24,3 +24,15 @@ export function messageView(message) {
     isSystem: Boolean(message.system),
   };
 }
+
+export function memberView(member) {
+  return {
+    userId: member.id ?? member.user?.id,
+    name: member.displayName ?? member.user?.displayName ?? member.user?.username ?? null,
+    isBot: member.user?.bot ?? false,
+    createdAt: member.user?.createdTimestamp ?? null,
+    nickname: member.nickname ?? null,
+    // A partial member arrives with an empty role cache: "not known", not "none".
+    roleIds: member.partial ? null : roleIdsOf(member, member.guild?.id),
+  };
+}
