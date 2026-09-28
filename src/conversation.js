@@ -11,6 +11,7 @@ import {
   parseMemberRename, matchesMemberName, RENAME_LINES, memberRenamedInstruction, pickNameInstruction,
 } from './rename.js';
 import { parseSuggestion, SUGGESTION_LINES } from './suggestions.js';
+import { parseQuietCommand, QUIET_LINES } from './quiet.js';
 import {
   LEADERBOARD_RE, resolveTarget, isCreditsCommand,
   formatCredits, formatLeaderboard, formatLevelUp, creditsInstruction,
@@ -66,7 +67,7 @@ export function createConversation({
   function channel(id) {
     let c = channels.get(id);
     if (!c) {
-      c = { io: null, lastChimeAt: null, busy: false, pending: null, idle: Promise.resolve() };
+      c = { io: null, lastChimeAt: null, busy: false, pending: null, idle: Promise.resolve(), quietUntil: null };
       channels.set(id, c);
     }
     return c;
@@ -83,7 +84,14 @@ export function createConversation({
     clearTimeoutImpl,
   });
 
-  async function safeSend(state, text) {
+  // "lu stop" (src/quiet.js): until quietUntil, nothing is posted in the
+  // channel. Checked here, the one way out, so a reply already being written
+  // when he was told to stop goes nowhere too.
+  const quietMinutes = config.quiet?.minutes ?? 5;
+  const isQuiet = (state) => state.quietUntil !== null && now() < state.quietUntil;
+
+  async function safeSend(state, text, { evenIfQuiet = false } = {}) {
+    if (!evenIfQuiet && isQuiet(state)) return null;
     try {
       return await state.io.send(truncateForDiscord(text));
     } catch (err) {
@@ -183,6 +191,11 @@ export function createConversation({
 
   async function run(channelId, { entry, kind }) {
     const rec = decisions.find(channelId, entry.messageId);
+    // Told to be quiet since this was queued: no judge, no typing, no model.
+    if (isQuiet(channel(channelId))) {
+      rec?.reasons.push('skipped: told to be quiet');
+      return;
+    }
     if (kind === 'judge') {
       const verdict = await isAddressed({ entries: split(channelId, entry).upTo.slice(-6) });
       rec?.reasons.push(`judge said ${verdict.yes ? 'YES' : 'NO'}${verdict.reason ? ` (${verdict.reason})` : ''}`);
@@ -451,6 +464,28 @@ export function createConversation({
     if (entry.isLu || !entry.text) return;
     const state = channel(entry.channelId);
     state.io = io;
+
+    // Ahead of every other command: "lu stop" has to work whatever else the
+    // message might also look like.
+    const quiet = entry.isBot ? null : parseQuietCommand(entry, { keywords: config.trigger.keywords });
+    if (quiet === 'stop') {
+      state.quietUntil = now() + quietMinutes * 60_000;
+      state.pending = null;
+      pauser.cancel(entry.channelId);
+      await safeSend(state, QUIET_LINES.stopped(quietMinutes), { evenIfQuiet: true });
+      return;
+    }
+    if (quiet === 'resume' && isQuiet(state)) {
+      state.quietUntil = null;
+      await safeSend(state, QUIET_LINES.resumed());
+      return;
+    }
+    // Quiet: follow the conversation and keep paying credits, say nothing.
+    if (isQuiet(state)) {
+      if (credits && config.credits?.enabled && !entry.isBot) awardForMessage(credits, entry, { now, random, config });
+      history.record(entry);
+      return;
+    }
 
     const explain = entry.isBot ? null : EXPLAIN_RE.exec(entry.text);
     if (explain) {
