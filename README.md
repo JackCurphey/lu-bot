@@ -101,10 +101,10 @@ lu shut up
 lu be quiet
 ```
 
-He says he'll be quiet, then says nothing in that channel for 5 minutes — not
-even if you @mention him. He still reads along, so he knows what was said when
-he's back. `lu you can talk` brings him back early. Other channels are not
-affected, and a restart ends it.
+He says he'll be quiet, then says nothing in that channel for a few minutes
+(5 unless `QUIET_MINUTES` has been changed) — not even if you @mention him. He
+still reads along, so he knows what was said when he's back. `lu you can talk`
+brings him back early. Other channels are not affected, and a restart ends it.
 
 ### Things worth knowing
 

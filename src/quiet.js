@@ -9,7 +9,8 @@ const RESUME_RE = /^(?:you can (?:talk|speak)(?: again)?(?: now)?|(?:talk|speak)
 const normalise = (text) => String(text ?? '').toLowerCase().replace(/[!.?,:;]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 export function parseQuietCommand(entry, { keywords = ['lu'] } = {}) {
-  let t = normalise(entry.text);
+  // "please" can sit either side of his name: "please lu stop", "lu stop please".
+  let t = normalise(entry.text).replace(/^please /, '').replace(/ please$/, '');
   let addressed = Boolean(entry.mentionsLu || entry.repliesToLu);
   // An @mention of Lu is rendered as "@Lu" in the entry's text.
   const names = ['@lu', ...keywords.map((k) => k.toLowerCase())];

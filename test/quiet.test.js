@@ -11,6 +11,13 @@ test('a stop that starts with his name is a stop', () => {
   }
 });
 
+test('please is allowed before his name as well as after it', () => {
+  assert.equal(parse('please lu stop'), 'stop');
+  assert.equal(parse('please, lu, stop'), 'stop');
+  assert.equal(parse('please lu you can talk'), 'resume');
+  assert.equal(parse('please stop'), null);
+});
+
 test('his name at the end counts too', () => {
   assert.equal(parse('stop talking lu'), 'stop');
   assert.equal(parse('shut up, lu.'), 'stop');

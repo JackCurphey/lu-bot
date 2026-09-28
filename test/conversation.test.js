@@ -1240,3 +1240,18 @@ test('lu you can talk when he is not quiet is ordinary conversation', async () =
   await say(s, msg({ text: 'lu you can talk' }));
   assert.equal(s.sent.at(-1), 'wot');
 });
+
+test('told to stop while the judge is deciding: no typing indicator, no reply', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const s = setup({ isAddressed: async () => { await gate; return { yes: true, reason: '' }; } });
+  s.seedLu('earlier');
+  await s.conversation.handleMessage(msg({ text: 'what do you all think' }), s.io);
+  s.timers.fire(PAUSE_MS);
+  await tick();
+  await s.conversation.handleMessage(msg({ text: 'lu stop' }), s.io);
+  release();
+  await s.conversation.idle('chan');
+  assert.equal(s.typing().typingStarts, 0);
+  assert.deepEqual(s.sent, [QUIET_LINES.stopped(5)]);
+});

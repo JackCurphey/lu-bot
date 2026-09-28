@@ -210,6 +210,12 @@ export function createConversation({
 
   async function reply(channelId, entry, { direct }, rec) {
     const state = channel(channelId);
+    // Checked again here: the judge may have taken seconds, and "lu stop" can
+    // arrive in that gap. No typing indicator for a reply that won't be sent.
+    if (isQuiet(state)) {
+      rec?.reasons.push('skipped: told to be quiet');
+      return;
+    }
     const fail = async (reason) => {
       rec?.reasons.push(`reply failed: ${reason}`);
       // Nobody asked for a random chime-in, so a failed one stays silent.
