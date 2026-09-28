@@ -283,6 +283,29 @@ export async function registerGuildCommands({ client, guildIds, definitions }) {
   }
 }
 
+// For servers over ~50 members Discord does not send the member list at
+// login, so until each member speaks, their first nickname/role change (or
+// leave) after a restart is invisible to onUpdate/onLeave, which need a
+// cached "before" to compare against or a cached member to describe. Fetching
+// the full list once per guild backfills that cache. GuildMemberManager.fetch
+// with no arguments resolves the whole-guild overload -- verified at
+// node_modules/discord.js/typings/index.d.ts:5129
+// ("public fetch(options?: FetchMembersOptions): Promise<Collection<Snowflake, GuildMember>>;").
+// A guild that fails (most likely a permissions issue) is warned about and
+// never stops the others; this must never throw, since it runs unawaited from
+// the ClientReady handler.
+export async function warmMemberCaches({ client, guildIds }) {
+  for (const id of guildIds) {
+    try {
+      const guild = await client.guilds.fetch(id);
+      const members = await guild.members.fetch();
+      console.log(`Loaded ${members.size} members in guild ${id}.`);
+    } catch (err) {
+      console.warn(`Could not load members in guild ${id}: ${err.message}`);
+    }
+  }
+}
+
 // Posts to a channel by id: logging's only way out. Discord's own error codes
 // are kept on the thrown error, because the log router tells a channel that
 // is gone (10003) or closed to Lu (50001, 50013) from a passing failure.
@@ -358,10 +381,21 @@ function viewOf(message) {
 }
 
 export async function startBot({ config, onMessage, commands = null, guildEvents = null, messageStore = null }) {
+  const intents = intentsFor(config);
   const client = new Client({
-    intents: intentsFor(config),
+    intents,
     partials: partialsFor(config),
   });
+
+  // Only requested (and so only worth warming) when a feature that needs
+  // member events is on -- with moderation, logging and welcome all off this
+  // adds nothing. Not awaited: filling the cache must never delay command
+  // registration or chat, and warmMemberCaches handles its own errors.
+  if (intents.includes(GatewayIntentBits.GuildMembers)) {
+    client.once(Events.ClientReady, () => {
+      warmMemberCaches({ client, guildIds: config.discord.allowedGuilds });
+    });
+  }
 
   // Client is an EventEmitter, and an 'error' event with no listener is
   // re-thrown by Node and kills the process. A routine gateway hiccup would

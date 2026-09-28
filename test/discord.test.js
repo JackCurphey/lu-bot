@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GatewayIntentBits, Partials, MessageFlags, ApplicationCommandOptionType } from 'discord.js';
-import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler, sendToChannel, missingChannelPermissions } from '../src/discord.js';
+import { shouldObserve, toEntry, createChannelIo, LU_NAME, truncateForDiscord, DISCORD_REPLY_LIMIT, startTyping, TYPING_REFRESH_MS, intentsFor, partialsFor, interactionView, createInteractionIo, messageRecordOf, registerGuildCommands, createMessageUpdateHandler, sendToChannel, missingChannelPermissions, warmMemberCaches } from '../src/discord.js';
 import { createMessageStore } from '../src/message-store.js';
 
 // --- Old Lu stage 1: hear everything in allowed channels ------------------------
@@ -672,6 +672,55 @@ test('commands are registered per guild, and one failure does not stop the rest'
   }
   assert.deepEqual(set, [['g1', 1]]);
   assert.match(warned.join('\n'), /bad.*Missing Access/);
+});
+
+// --- Member cache warming (final review I1) ---
+
+test('warmMemberCaches fetches each guild\'s members and logs the count', async () => {
+  const fetched = [];
+  const client = { guilds: { fetch: async (id) => ({
+    members: { fetch: async () => { fetched.push(id); return { size: 3 }; } },
+  }) } };
+  const log = console.log;
+  const logged = [];
+  console.log = (m) => logged.push(m);
+  try {
+    await warmMemberCaches({ client, guildIds: ['g1', 'g2'] });
+  } finally {
+    console.log = log;
+  }
+  assert.deepEqual(fetched, ['g1', 'g2']);
+  assert.match(logged.join('\n'), /Loaded 3 members in guild g1\./);
+  assert.match(logged.join('\n'), /Loaded 3 members in guild g2\./);
+});
+
+test('warmMemberCaches warns about one failing guild and still loads the next', async () => {
+  const fetched = [];
+  const client = { guilds: { fetch: async (id) => {
+    if (id === 'bad') throw new Error('Missing Access');
+    return { members: { fetch: async () => { fetched.push(id); return { size: 5 }; } } };
+  } } };
+  const warn = console.warn;
+  const warned = [];
+  console.warn = (m) => warned.push(m);
+  try {
+    await warmMemberCaches({ client, guildIds: ['bad', 'g1'] });
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(fetched, ['g1']);
+  assert.match(warned.join('\n'), /Could not load members in guild bad: Missing Access/);
+});
+
+test('warmMemberCaches never throws', async () => {
+  const client = { guilds: { fetch: async () => { throw new Error('boom'); } } };
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await assert.doesNotReject(warmMemberCaches({ client, guildIds: ['g1'] }));
+  } finally {
+    console.warn = warn;
+  }
 });
 
 // --- WP-3 adapter groundwork ---

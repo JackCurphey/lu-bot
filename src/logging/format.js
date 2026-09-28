@@ -67,3 +67,64 @@ export function formatBulkDelete({ channelId, messages }, { now = Date.now } = {
     files: [{ attachment: Buffer.from(lines.join('\n'), 'utf8'), name: 'deleted-messages.txt' }],
   };
 }
+
+const WEEK = 7 * 86_400_000;
+const roleList = (ids) => ids.map((id) => `<@&${id}>`).join(' ');
+
+export function formatMemberJoined({ userId, name, createdAt, isBot }, { now = Date.now } = {}) {
+  const fields = [field('Account created', `<t:${Math.floor(createdAt / 1000)}:R>`)];
+  if (!isBot && now() - createdAt < WEEK) fields.push(field('New account', 'Created less than 7 days ago'));
+  return {
+    embeds: [{
+      title: isBot ? 'Bot added' : 'Member joined',
+      color: COLORS.joined,
+      description: who(userId, name),
+      fields,
+      footer: { text: `User ID ${userId}` },
+      timestamp: stamp(now),
+    }],
+  };
+}
+
+export function formatMemberLeft({ userId, name, roleIds }, { now = Date.now } = {}) {
+  const roles = roleIds == null ? 'not known (Lu had not seen this member since he last restarted)' : (roleIds.length ? roleList(roleIds) : 'none');
+  return {
+    embeds: [{
+      title: 'Member left',
+      color: COLORS.left,
+      description: who(userId, name),
+      fields: [field('Roles', roles)],
+      footer: { text: `User ID ${userId}` },
+      timestamp: stamp(now),
+    }],
+  };
+}
+
+export function formatNicknameChanged({ userId, name, before, after }, { now = Date.now } = {}) {
+  return {
+    embeds: [{
+      title: 'Nickname changed',
+      color: COLORS.changed,
+      description: who(userId, name),
+      fields: [field('Before', before ?? '(none)', true), field('After', after ?? '(none)', true)],
+      footer: { text: `User ID ${userId}` },
+      timestamp: stamp(now),
+    }],
+  };
+}
+
+export function formatRolesChanged({ userId, name, added, removed }, { now = Date.now } = {}) {
+  const fields = [];
+  if (added.length) fields.push(field('Added', roleList(added)));
+  if (removed.length) fields.push(field('Removed', roleList(removed)));
+  return {
+    embeds: [{
+      title: 'Roles changed',
+      color: COLORS.changed,
+      description: who(userId, name),
+      fields,
+      footer: { text: `User ID ${userId}` },
+      timestamp: stamp(now),
+    }],
+  };
+}

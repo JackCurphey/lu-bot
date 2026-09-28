@@ -6,6 +6,10 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.5 — <deploy date>
+
+- lu can also log people joining and leaving, and nickname and role changes (/log channel members, /log channel member changes)
+
 ## v1.4 — 2026-09-27
 
 - lu can keep a log of deleted and edited messages in a channel the admins pick with /log (needs the manage server permission)
