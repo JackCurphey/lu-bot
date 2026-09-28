@@ -15,18 +15,23 @@
 > | :--- | :--- | :--- |
 > | 1 | Foundation: SQLite, slash commands, intents, settings, message store | closed 2026-09-27 (PR #1, #2; v1.3 live) |
 > | 2 | Moderation with case history | paused after re-audit (D35); 3 deltas await the owner |
-> | 3 | Logging | PR A built + reviewed on `feat/wp3-logging` (687 pass), not merged; PR B not started |
+> | 3 | Logging | PR A merged (#3, `ba00dc2`) + deployed v1.4, LOGGING_ENABLED=true; live check pending; PR B next on `feat/wp3b-member-logs` |
 > | 4 | Welcomes, leaves, join roles | not started |
 > | 5 | Role menus | not started |
 > | 6 | Web settings page (own design pass) | not started |
 >
-> **Next action:** with the owner's approval, open PR A, merge and deploy it,
-> set `LOGGING_ENABLED=true` on the mini, and live-check it in
-> lu-testing-environment. An admin must run `/log channel` (Manage Server).
-> Then do PR B (member logs). Note for WP-2: deletes currently `forget` stored
-> text, so a spammer's deleted messages won't be in a later ban's 5-message
-> snapshot; decide in WP-2. Before moderation is switched on, Lu's role must
-> move above the rank roles; View Audit Log is still not granted.
+> **Deployed 2026-09-27 19:52:** backup `~/lu-bot-backup-d9a1139-20260927-195224.tar.gz`,
+> `.env` backup `~/lu-bot-env-before-logging-20260927-195224.bak`, then
+> `LOGGING_ENABLED=true` appended. PID 2645. The log shows `Registered 2 slash
+> command(s)` and `Announced v1.4`; the login with Server Members succeeded.
+> Discord lists `/log` with Manage Server (32) and five sub-commands.
+>
+> **Next action:** the live check. An admin runs
+> `/log channel messages #lu-testing-environment`; then post, edit and delete a
+> line. Then PR B (member logs). For WP-2: deletes `forget` stored text, so a
+> spammer's deleted messages miss a later ban snapshot; decide in WP-2. Lu's
+> role must move above the rank roles before moderation is switched on. View
+> Audit Log is still not granted.
 >
 > Test command: `npm test` (`node --test`).
 >

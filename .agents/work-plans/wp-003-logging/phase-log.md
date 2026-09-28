@@ -19,3 +19,9 @@ Baseline on feat/wp3-logging (2026-09-27): npm test → 632 pass, 0 fail.
 Final review of PR A (fresh context, most capable model): ready after fixes. Fixed: /log channel now checks View Channel, Send Messages, Embed Links and Attach Files before saving; unedited updates to messages Lu no longer holds are not logged; bulk deletes honour ignored roles; system messages skipped; README known gap for uncached bot messages. Scoped re-review: all addressed, no new breakage.
 Left by ruling: /log channel is not deferred (3-second deadline risk); ignore-role check duplicated in router.post and isIgnoredAuthor (both correct).
 Not yet done: PR A opened, merged, deployed, LOGGING_ENABLED switched on, live check. PR B (Tasks 8–10).
+| 2026-09-28 | 8 Member formats | 687→ (branch) | WEEK/7: "under 7 days is flagged" red (field missing); restored | 68b379e |
+| 2026-09-28 | 9 Member handlers | 701 pass | partial-before guard removed: "uncached before logs nothing" red `2 !== 0`; restored | 4c6dfdf |
+| 2026-09-28 | 10 Wiring + docs | 701 pass | no new tests (wiring) | 830ee29 |
+| 2026-09-28 | PR B final fixes I1, M3 | 704 pass | I1 stop-after-first-failure: red on deep-equal; restored | e4eda03, 05154c9 |
+
+PR B final review (fresh context, most capable model): ready to merge. Fixed: warm member caches at startup when Server Members is requested (first change after a restart was dropped); /log status footer mentions member changes. Re-review: both addressed.

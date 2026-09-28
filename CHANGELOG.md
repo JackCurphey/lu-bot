@@ -6,9 +6,10 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
-## v1.5 — <deploy date>
+## v1.5 — 2026-09-28
 
 - you can tell lu to stop: "lu stop", "lu shut up" or "lu be quiet" and he goes quiet in that channel for 5 minutes. "lu you can talk" brings him back early
+- lu can also log people joining and leaving, and nickname and role changes (/log channel members, /log channel member changes)
 
 ## v1.4 — 2026-09-27
 

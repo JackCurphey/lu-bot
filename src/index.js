@@ -24,6 +24,7 @@ import { createGuildEvents } from './guild-events.js';
 import { createLogSettings } from './logging/settings.js';
 import { createLogRouter } from './logging/router.js';
 import { createMessageLogHandlers } from './logging/message-handlers.js';
+import { createMemberLogHandlers } from './logging/member-handlers.js';
 import { createLogCommand } from './logging/commands.js';
 
 // A rejected promise with no handler is fatal in Node. The bot is meant to sit
@@ -159,6 +160,10 @@ if (config.features.logging) {
     guildEvents.on('messageDelete', messageLogs.onDelete);
     guildEvents.on('messageUpdate', messageLogs.onEdit);
     guildEvents.on('messageBulkDelete', messageLogs.onBulkDelete);
+    const memberLogs = createMemberLogHandlers({ router });
+    guildEvents.on('memberAdd', memberLogs.onJoin);
+    guildEvents.on('memberRemove', memberLogs.onLeave);
+    guildEvents.on('memberUpdate', memberLogs.onUpdate);
     commands.register(createLogCommand({
       logSettings,
       send,

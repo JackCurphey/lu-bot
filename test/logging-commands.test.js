@@ -96,5 +96,6 @@ test('/log status lists each category, broken routes, ignores, and what is not s
   assert.match(text, /Moderation logs: off/);
   assert.match(text, /Ignored channels: <#c1>/);
   assert.match(text, /Ignored roles: none/);
-  assert.match(text, /who deleted a message .* not shown yet/i);
+  assert.match(text, /Moderation logs start when moderation is switched on\./);
+  assert.match(text, /Who deleted a message or changed a member is not shown yet\./);
 });
