@@ -129,6 +129,10 @@ export function loadConfig(env) {
     roleMenus: on('ROLE_MENUS_ENABLED'),
   };
 
+  // "lu stop" (src/quiet.js): how long he stays quiet in that channel.
+  const quiet = { minutes: num(env, 'QUIET_MINUTES', 5) };
+  if (quiet.minutes < 1) throw new Error(`QUIET_MINUTES must be at least 1, got ${quiet.minutes}`);
+
   return {
     discord: {
       token: env.DISCORD_BOT_TOKEN,
@@ -181,6 +185,7 @@ export function loadConfig(env) {
       // repo. Gitignored -- this is runtime state, like the credit ledger.
       file: env.SUGGESTIONS_FILE?.trim() || 'data/suggestions.jsonl',
     },
+    quiet,
     features,
     database: {
       // Relative to the project root, resolved in src/index.js like the

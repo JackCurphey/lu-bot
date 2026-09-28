@@ -1164,3 +1164,94 @@ test('an ordinary message that merely says "suggest" still reaches the model', a
   assert.deepEqual(recorded, []);
   assert.deepEqual(s.sent, ['wot']);
 });
+
+// --- Telling Lu to be quiet --------------------------------------------------------
+// "lu stop" acknowledges once, then nothing in that channel for the quiet time:
+// no replies to mentions, no level-ups, no command answers. Messages are still
+// recorded, so he can follow the conversation when he is back.
+
+import { QUIET_LINES } from '../src/quiet.js';
+
+test('lu stop acknowledges once, then he answers nothing in that channel', async () => {
+  const s = setup();
+  await say(s, msg({ text: 'lu stop' }));
+  assert.deepEqual(s.sent, [QUIET_LINES.stopped(5)]);
+  await say(s, msg({ text: 'lu what do you think' }));
+  await say(s, msg({ text: '@Lu hello', mentionsLu: true }));
+  assert.deepEqual(s.sent, [QUIET_LINES.stopped(5)]);
+  assert.equal(s.calls.respond.length, 0);
+  assert.equal(s.typing().typingStarts, 0);
+});
+
+test('messages during the quiet time are still recorded', async () => {
+  const s = setup();
+  await say(s, msg({ text: 'lu stop' }));
+  await say(s, msg({ text: 'remember this' }));
+  assert.ok(s.history.entries('chan').some((e) => e.text === 'remember this'));
+});
+
+test('he is back after the quiet time runs out', async () => {
+  let t = T0;
+  const s = setup({ now: () => t });
+  await say(s, msg({ text: 'lu stop', at: t }));
+  t = T0 + 5 * 60_000 + 1;
+  await say(s, msg({ text: 'lu what do you think', at: t }));
+  assert.equal(s.sent.at(-1), 'wot');
+});
+
+test('lu you can talk ends it early', async () => {
+  const s = setup();
+  await say(s, msg({ text: 'lu stop' }));
+  await say(s, msg({ text: 'lu you can talk' }));
+  assert.equal(s.sent.at(-1), QUIET_LINES.resumed());
+  await say(s, msg({ text: 'lu what do you think' }));
+  assert.equal(s.sent.at(-1), 'wot');
+});
+
+test('other channels are not affected', async () => {
+  const s = setup();
+  await say(s, msg({ text: 'lu stop' }));
+  await say(s, msg({ text: 'lu what do you think', channelId: 'other' }));
+  assert.equal(s.sent.at(-1), 'wot');
+});
+
+test('a reply already being written when he is told to stop is not posted', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const s = setup({ respondWithReason: async () => { await gate; return { ok: true, reply: 'wot' }; } });
+  await s.conversation.handleMessage(msg({ text: 'lu what do you think' }), s.io);
+  await tick();
+  await s.conversation.handleMessage(msg({ text: 'lu stop' }), s.io);
+  release();
+  await s.conversation.idle('chan');
+  assert.deepEqual(s.sent, [QUIET_LINES.stopped(5)]);
+});
+
+test('the quiet time follows config.quiet.minutes', async () => {
+  const s = setup();
+  const custom = setup({ config: { ...config, quiet: { minutes: 1 } } });
+  await say(custom, msg({ text: 'lu stop' }));
+  assert.deepEqual(custom.sent, [QUIET_LINES.stopped(1)]);
+  assert.equal(s.sent.length, 0);
+});
+
+test('lu you can talk when he is not quiet is ordinary conversation', async () => {
+  const s = setup();
+  await say(s, msg({ text: 'lu you can talk' }));
+  assert.equal(s.sent.at(-1), 'wot');
+});
+
+test('told to stop while the judge is deciding: no typing indicator, no reply', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const s = setup({ isAddressed: async () => { await gate; return { yes: true, reason: '' }; } });
+  s.seedLu('earlier');
+  await s.conversation.handleMessage(msg({ text: 'what do you all think' }), s.io);
+  s.timers.fire(PAUSE_MS);
+  await tick();
+  await s.conversation.handleMessage(msg({ text: 'lu stop' }), s.io);
+  release();
+  await s.conversation.idle('chan');
+  assert.equal(s.typing().typingStarts, 0);
+  assert.deepEqual(s.sent, [QUIET_LINES.stopped(5)]);
+});

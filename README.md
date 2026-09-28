@@ -91,6 +91,21 @@ suggestions back, discuss them, or act on them — they go to whoever builds him
 If he says he could not write it down, he could not: he never claims to have
 noted something he has not.
 
+### Telling him to be quiet
+
+Anyone can tell Lu to stop:
+
+```
+lu stop
+lu shut up
+lu be quiet
+```
+
+He says he'll be quiet, then says nothing in that channel for a few minutes
+(5 unless `QUIET_MINUTES` has been changed) — not even if you @mention him. He
+still reads along, so he knows what was said when he's back. `lu you can talk`
+brings him back early. Other channels are not affected, and a restart ends it.
+
 ### Things worth knowing
 
 **He reads every message in the channels he watches.** He has to, in order to follow a conversation rather than only answering direct mentions. That history lives in memory only and is thrown away when he restarts. Your credit balance is the only thing about you kept on disk.

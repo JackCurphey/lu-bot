@@ -415,3 +415,14 @@ test('no server-feature warning when the features are off or a server is allowed
     discord: { allowedChannels: [], allowedGuilds: ['g1'] }, features: { logging: true },
   }), []);
 });
+
+// --- Quiet time ("lu stop") ---
+
+test('the quiet time defaults to 5 minutes and can be changed', () => {
+  assert.equal(loadConfig(valid).quiet.minutes, 5);
+  assert.equal(loadConfig({ ...valid, QUIET_MINUTES: '2' }).quiet.minutes, 2);
+});
+
+test('a quiet time under 1 minute is refused', () => {
+  assert.throws(() => loadConfig({ ...valid, QUIET_MINUTES: '0' }), /QUIET_MINUTES/);
+});
