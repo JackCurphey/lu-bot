@@ -6,6 +6,12 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.6 — 2026-10-02
+
+- there's a minecraft server now, running on the same mac mini as lu (java edition, version 26.3)
+- it's whitelisted, so reply here with your minecraft java username and jack will add you
+- once you're added, ask jack for the address
+
 ## v1.5 — 2026-09-28
 
 - you can tell lu to stop: "lu stop", "lu shut up" or "lu be quiet" and he goes quiet in that channel for 5 minutes. "lu you can talk" brings him back early

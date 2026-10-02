@@ -26,6 +26,14 @@
 > and `Announced v1.5`. LOGGING_ENABLED=true since v1.4 (`.env` backup
 > `~/lu-bot-env-before-logging-20260927-195224.bak`).
 >
+> **2026-10-02: Lu's model capped at 3 threads; Minecraft server shares the mini.**
+> `LLM_CHAT_MODEL` and `LLM_JUDGE_MODEL` now `qwen3:4b-instruct-3t` (Ollama
+> copy of `qwen3:4b-instruct` with `PARAMETER num_thread 3`; llama-server runs
+> with `-t 3`). 200 tokens warm: 20.1s at 4 threads, 21.1s at 3. Leaves a core
+> for a Paper 26.3 server (`~/minecraft`, launchd `com.curphey.minecraft`, 4 GB
+> heap, whitelist on, RCON helper `~/bin/mc`). Revert: restore
+> `~/lu-bot-env-before-3thread-20261002-201716.bak` and kickstart the bot.
+>
 > **Next action:** live checks in lu-testing-environment. An admin runs
 > `/log channel messages|members|member changes`; post, edit and delete a line;
 > change a test account's nickname or role; "lu stop", then "lu you can talk".
