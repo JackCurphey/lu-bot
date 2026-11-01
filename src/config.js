@@ -28,8 +28,12 @@ export function loadLlmConfig(env) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
+  const baseUrl = env.LLM_BASE_URL || 'http://localhost:1234/v1';
+
   return {
-    baseUrl: env.LLM_BASE_URL || 'http://localhost:1234/v1',
+    baseUrl,
+    // Replies may come from a different server than the judges and embeddings.
+    chatBaseUrl: env.LLM_CHAT_BASE_URL || baseUrl,
     chatModel: env.LLM_CHAT_MODEL,
     judgeModel: env.LLM_JUDGE_MODEL,
     embedModel: env.LLM_EMBED_MODEL,

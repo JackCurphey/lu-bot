@@ -6,6 +6,13 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.7 — 2026-11-01
+
+- lu's replies now come from a small model trained on messages from this server, not the model he used before
+- so he'll say odd things and won't really follow what you ask. he's lost his personality and the facts he knew, and asking him to change a name won't work for now
+- it can repeat bits of real messages. names were swapped out before training, but a name someone typed in a message may have slipped through
+- if you want your messages taken out, tell jack and he'll retrain without them
+
 ## v1.6 — 2026-10-02
 
 - there's a minecraft server now, running on the same mac mini as lu (java edition, version 26.3)

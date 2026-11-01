@@ -41,6 +41,7 @@ for (const warning of startupWarnings(config)) {
 }
 
 const llm = createLlm({ baseUrl: config.llm.baseUrl });
+const chatLlm = createLlm({ baseUrl: config.llm.chatBaseUrl });
 // Resolved against this module, not the process working directory: under
 // launchd, systemd or pm2 — how this is actually run — cwd is not the repo
 // root and a relative path here is an ENOENT crash at startup.
@@ -94,7 +95,7 @@ const conversation = createConversation({
   history: createHistory(config.history),
   decisions: createDecisionLog(),
   persona,
-  llm,
+  llm: chatLlm,
   // Retrieval finds candidates; the corpus judge decides whether they earn a
   // place in the prompt. A model handed passages tends to quote them.
   async chooseChunks(text) {
