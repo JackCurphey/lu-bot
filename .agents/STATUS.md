@@ -1,5 +1,13 @@
 # Lu Bot — status
 
+> **2026-11-02: Lu's replies come from the tiny model (v1.8, D39, D40).** Deployed from
+> `feat/tiny-chat`, not yet merged. Adapter: `com.curphey.lu-tiny` on 127.0.0.1:11500, files in
+> `~/lu-tiny`, source in `~/tiny-llm/serve`. Judges and embeddings stay on Qwen. Trained on
+> BIS-cord chats; the owner confirmed its members agreed to use in Cry's Cantina. **Way back:**
+> in the mini's `.env`, remove `LLM_CHAT_BASE_URL` and set `LLM_CHAT_MODEL=qwen3:4b-instruct-3t`,
+> then `launchctl kickstart -k gui/$(id -u)/com.curphey.lu-bot`. Backup: `~/lu-bot-env-qwen-*.bak`.
+> Awaiting a live reply check. The wrong v1.7 announcement may still need deleting.
+
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
 > Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed). WP-3 (logging)
 > moved ahead of WP-2 (D35); re-audit in progress on `feat/wp3-logging`.**
@@ -25,6 +33,12 @@
 > PID 5829. The log shows `Loaded 141 members`, `Registered 2 slash command(s)`
 > and `Announced v1.5`. LOGGING_ENABLED=true since v1.4 (`.env` backup
 > `~/lu-bot-env-before-logging-20260927-195224.bak`).
+>
+> **Deployed 2026-10-02 20:42 (v1.6, `3faf906`, PR #6):** Minecraft server
+> announcement + persona facts about it. Backup
+> `~/lu-bot-backup-b6ef7c3-20261002-204253.tar.gz`. PID 35249. Log shows
+> `Announced v1.6`, `Loaded 141 members`, `Registered 2 slash command(s)`;
+> `bot.err.log` untouched since Sep 13.
 >
 > **2026-10-02: Lu's model capped at 3 threads; Minecraft server shares the mini.**
 > `LLM_CHAT_MODEL` and `LLM_JUDGE_MODEL` now `qwen3:4b-instruct-3t` (Ollama
