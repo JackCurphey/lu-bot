@@ -6,7 +6,10 @@
 # Windows stores no password for them.
 $ErrorActionPreference = 'Stop'
 
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
+# The account comes from the current identity, not $env:USERDOMAIN: over SSH
+# that variable reads WORKGROUP, which Windows can't map to an account.
+$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$principal = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet `
   -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
   -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew `
