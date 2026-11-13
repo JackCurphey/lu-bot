@@ -22,6 +22,11 @@ if (-not $ready) {
   exit 1
 }
 
+# Stopping the scheduled task ends this script but not the Lu it started. Two
+# copies would both log in and reply twice, so clear any leftover first.
+Get-Process node -ErrorAction SilentlyContinue |
+  Where-Object { $_.Path -eq "$root\node\node.exe" } | Stop-Process -Force
+
 Set-Location $root
 cmd /c "`"$root\node\node.exe`" --env-file-if-exists=.env src/index.js >> `"$log`" 2>&1"
 exit $LASTEXITCODE
