@@ -18,8 +18,32 @@ export const NICKNAME_MAX_LENGTH = 32;
 // rename request. Where both match, the reset path wins (see reply() in
 // conversation.js): a reset needs nothing back from the model, so it is
 // handled deterministically instead of asking for a NICKNAME marker.
-export const NICKNAME_REQUEST_RE =
-  /\b(change|set)\s+your\s+(name|nick|nickname)\b|\bcall\s+yourself\b|\byou\s+(can\s+)?go\s+by\b|\brename\s+yourself\b|\byour\s+name\s+is\s+now\b|\bgo\s+back\s+to\s+your\s+(normal|default|old|real)\s+name\b|\breset\s+your\s+(name|nick|nickname)\b/i;
+//
+// Widened 2026-11-13 ("your new name is", "can we call you", "you're called",
+// "rename you", "ur"...): members' own wordings never reached the model as
+// renames, so Lu just chatted back and appeared to refuse. "call you" skips
+// the phone sense ("call you later/back/tonight"). Matching only adds the
+// instruction; the model still decides whether a rename was really asked for.
+const CALL_YOU = String.raw`call\s+you\b(?!\s+(later|back|tomorrow|tmrw|tonight|soon|out|on|up|if|in|at|when|after|a|an)\b)`;
+// "called out for", "called up", "called to the front" are not names.
+const NOT_CALLED_OUT = String.raw`(?!\s+(out|up|in|on|to|back|for)\b)`;
+export const NICKNAME_REQUEST_RE = new RegExp([
+  String.raw`\b(change|set)\s+(your|ur)\s+(name|nick|nickname)\b`,
+  String.raw`\bcall\s+yourself\b`,
+  String.raw`\bname\s+yourself\b`,
+  String.raw`\byou\s+(can\s+)?go\s+by\b`,
+  String.raw`\brename\s+yourself\b`,
+  String.raw`\brenam(e|ing)\s+you\b`,
+  String.raw`\byour\s+name\s+is\s+now\b`,
+  String.raw`\byour\s+new\s+name\s+is\b`,
+  String.raw`\bnew\s+name\s+for\s+you\b`,
+  String.raw`\bcan\s+(i|we)\s+${CALL_YOU}`,
+  String.raw`\b(i|we)(\s*'ll|\s+will|\s+shall|\s+should|\s+could)\s+${CALL_YOU}`,
+  String.raw`\b(you're|you\s+are|youre)\s+(now\s+)?called\b${NOT_CALLED_OUT}`,
+  String.raw`\byou\s+should\s+be\s+called\b${NOT_CALLED_OUT}`,
+  String.raw`\bgo\s+back\s+to\s+(your|ur)\s+(normal|default|old|real)\s+name\b`,
+  String.raw`\breset\s+(your|ur)\s+(name|nick|nickname)\b`,
+].join('|'), 'i');
 
 // Deterministic path: a reset carries no new name, so there is nothing for
 // the model to decide and nothing to wait on — this is checked directly
@@ -28,7 +52,7 @@ export const NICKNAME_REQUEST_RE =
 // must only catch requests to go back to a previous/default name, never a
 // rename to a brand-new one (e.g. "change your name to Bob" must NOT match).
 export const NICKNAME_RESET_RE =
-  /\bback\s+to\s+your\s+(normal|default|old|real|usual)\s+name\b|\breset\s+your\s+(name|nick|nickname)\b|\bchange\s+your\s+name\s+back\b|\bchange\s+your\s+nick(name)?\s+back\b/i;
+  /\bback\s+to\s+(your|ur)\s+(normal|default|old|real|usual)\s+name\b|\breset\s+(your|ur)\s+(name|nick|nickname)\b|\bchange\s+(your|ur)\s+name\s+back\b|\bchange\s+(your|ur)\s+nick(name)?\s+back\b/i;
 
 // Injected into the system prompt only for a message that matches
 // NICKNAME_REQUEST_RE and is not a reset — see the comment on
@@ -43,7 +67,9 @@ export const NICKNAME_INSTRUCTION =
   'fewer, no markdown, emoji or @mentions. Write your normal in-character ' +
   'reply alongside that line, and let the reply acknowledge the new name: do ' +
   'not refuse, do not claim you cannot do it, and do not say you are above ' +
-  'names. You may be rude about the name itself, that is in character, but ' +
+  'names. A suggestion counts as asking: "can we call you X", "you should be ' +
+  'called X" and "your new name is X" are all requests, so the change happens. ' +
+  'You may be rude about the name itself, that is in character, but ' +
   'the change still happens. Never mention the line, never explain it, and ' +
   'never include it when nobody asked for a name change.';
 

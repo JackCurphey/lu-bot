@@ -1,14 +1,19 @@
 import { stripThinking } from './responder.js';
 import { withTimeout } from './timeout.js';
 
-// Kept deliberately short: on the mini's CPU almost all of this call's cost is
-// reading the prompt, not writing the one-word answer. Chosen by measurement on
-// the mini over a 40-example test set.
+// Retuned 2026-11-13 for Bonsai 2 27B. The earlier wording ("...the group, or
+// nobody, answer NO") made Bonsai read every follow-up that didn't repeat
+// Lu's name as aimed at nobody: 11/16 and 4/8 on the made-up examples in
+// scripts/addressee-examples.json, every miss a follow-up to Lu. Re-measure
+// with scripts/eval-addressee.js after any change to this wording.
 export const ADDRESSEE_SYSTEM =
   'You read a Discord chat. Lu is a bot; humans also talk to each other. ' +
-  'Judge ONLY the last message: does it speak TO Lu (a question, reply, or ' +
-  'comment aimed at him), not just near him? If it addresses another named ' +
-  'person, the group, or nobody, answer NO. Otherwise YES. One word.';
+  'Judge ONLY the last message: does it speak TO Lu? A message that carries ' +
+  'on a conversation with Lu counts as speaking to him even without his name: ' +
+  'answering what Lu just said, asking him a follow-up, reacting to his line, ' +
+  'or pushing back on it. If the last message speaks to another named person, ' +
+  'the whole group, or starts an unrelated topic, answer NO. Otherwise YES. ' +
+  'One word.';
 
 // Each context line's text is bounded, not just the prompt as a whole:
 // reading an uncached prompt runs ~25 tok/s on the deployment host's CPU, and

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHistory, toChatTurns } from '../src/history.js';
+import { createHistory, toChatTurns, HISTORY_LINE_CHARS } from '../src/history.js';
 
 let n = 0;
 const entry = (over = {}) => {
@@ -66,4 +66,34 @@ test('toChatTurns names everyone except Lu, whose lines are his own', () => {
     { role: 'assistant', content: 'what about it' },
     { role: 'user', content: 'otherbot: beep' },
   ]);
+});
+
+// --- 2026-11-13: earlier lines are capped so the reply prompt fits its slot ---
+// 60 lines at Discord's 2000-char maximum would overflow the PC's 12K-token
+// slot; at 500 chars the measured worst case is 7,887 tokens.
+
+test('HISTORY_LINE_CHARS is 500', () => {
+  assert.equal(HISTORY_LINE_CHARS, 500);
+});
+
+test('a long earlier message keeps its first 500 characters plus an ellipsis', () => {
+  const long = 'a'.repeat(2000);
+  const [turn] = toChatTurns([entry({ name: 'jo', text: long })]);
+  assert.equal(turn.content, `jo: ${'a'.repeat(500)}…`);
+});
+
+test("Lu's own long earlier line is capped the same way", () => {
+  const [turn] = toChatTurns([entry({ isLu: true, text: 'b'.repeat(900) })]);
+  assert.deepEqual(turn, { role: 'assistant', content: `${'b'.repeat(500)}…` });
+});
+
+test('lines at or under the cap are left exactly as they were', () => {
+  const exact = 'c'.repeat(500);
+  const turns = toChatTurns([entry({ name: 'sam', text: exact }), entry({ name: 'mia', text: 'hi' })]);
+  assert.deepEqual(turns.map((t) => t.content), [`sam: ${exact}`, 'mia: hi']);
+});
+
+test('the cap never splits an emoji in half', () => {
+  const [turn] = toChatTurns([entry({ name: 'sam', text: `${'d'.repeat(499)}😀😀😀` })]);
+  assert.equal(turn.content, `sam: ${'d'.repeat(499)}😀…`);
 });

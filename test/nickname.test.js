@@ -51,6 +51,57 @@ test('does not match unrelated messages', () => {
   }
 });
 
+// --- 2026-11-13: wordings members actually use, missed by the first list ------
+// Lu refused these on Bonsai because they never reached the model as renames.
+
+test('detects the wider set of rename wordings', () => {
+  const phrasings = [
+    'lu your new name is Steve',
+    'lu i have a new name for you: Steve',
+    'lu can i call you Steve',
+    'lu can we call you Steve from now on',
+    "lu i'll call you Steve",
+    'lu we will call you Steve now',
+    'lu i think we should call you Steve',
+    'lu we could call you Steve',
+    "lu you're called Steve now",
+    'lu you are called Steve',
+    'lu you should be called Steve',
+    'lu im going to rename you to Steve',
+    'lu renaming you Steve',
+    'lu name yourself Steve',
+    'lu change ur name to Steve',
+    'lu set ur nick to Steve',
+  ];
+  for (const p of phrasings) {
+    assert.match(p, NICKNAME_REQUEST_RE, `expected to match: "${p}"`);
+  }
+});
+
+test('the wider wordings still leave ordinary chat alone', () => {
+  const notRequests = [
+    "what's your name",
+    'my name is sam',
+    'the farm should be called the commune',
+    "i'll call you later",
+    'we will call you back tomorrow',
+    'can i call you tonight',
+    'we should call you later',
+    'the new name for the server is great',
+    'what is ur name',
+    "i'll call you out on that",
+    "i'll call you on monday",
+    "i'll call you tmrw",
+    "we'll call you if we need you",
+    'i could call you an idiot',
+    'we should call you an ambulance',
+    'that is the thing you should be called out for',
+  ];
+  for (const m of notRequests) {
+    assert.doesNotMatch(m, NICKNAME_REQUEST_RE, `expected NOT to match: "${m}"`);
+  }
+});
+
 // --- Fix round 1, Minor 4: "go by" must be addressed to Lu ------------------
 
 test('the bare "go by" alternative only matches when addressed to Lu', () => {
@@ -94,6 +145,12 @@ test('NICKNAME_RESET_RE matches explicit reset phrasings', () => {
   for (const p of phrasings) {
     assert.match(p, NICKNAME_RESET_RE, `expected to match: "${p}"`);
   }
+});
+
+test('NICKNAME_RESET_RE also accepts "ur" for "your", like the rename phrases do', () => {
+  assert.match('lu change ur name back', NICKNAME_RESET_RE);
+  assert.match('lu reset ur nick', NICKNAME_RESET_RE);
+  assert.match('lu go back to ur normal name', NICKNAME_RESET_RE);
 });
 
 test('NICKNAME_RESET_RE does not match a rename to a new name or unrelated messages', () => {

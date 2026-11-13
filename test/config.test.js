@@ -40,10 +40,12 @@ test('loadLlmConfig returns the correct shape with a default baseUrl', () => {
   });
   assert.deepEqual(llm, {
     baseUrl: 'http://localhost:1234/v1',
+    chatBaseUrl: 'http://localhost:1234/v1',
     chatModel: 'chat',
     judgeModel: 'judge',
     embedModel: 'embed',
     addresseeModel: 'judge',
+    disableThinking: false,
   });
 });
 
@@ -67,6 +69,14 @@ test('loadLlmConfig lists every missing model key at once', () => {
   );
 });
 
+test('LLM_DISABLE_THINKING is on only for exactly "true"', () => {
+  const base = { LLM_CHAT_MODEL: 'c', LLM_JUDGE_MODEL: 'j', LLM_EMBED_MODEL: 'e' };
+  assert.equal(loadLlmConfig({ ...base, LLM_DISABLE_THINKING: 'true' }).disableThinking, true);
+  for (const v of [undefined, '', 'false', 'TRUE', '1', ' true']) {
+    assert.equal(loadLlmConfig({ ...base, LLM_DISABLE_THINKING: v }).disableThinking, false, `value ${v}`);
+  }
+});
+
 test('loadLlmConfig honours an explicit LLM_BASE_URL override', () => {
   const llm = loadLlmConfig({
     LLM_CHAT_MODEL: 'chat',
@@ -81,10 +91,12 @@ test('loadConfig still returns exactly the same llm section as before', () => {
   const cfg = loadConfig(valid);
   assert.deepEqual(cfg.llm, {
     baseUrl: 'http://localhost:1234/v1',
+    chatBaseUrl: 'http://localhost:1234/v1',
     chatModel: 'chat',
     judgeModel: 'judge',
     embedModel: 'embed',
     addresseeModel: 'judge',
+    disableThinking: false,
   });
 });
 
@@ -425,4 +437,19 @@ test('the quiet time defaults to 5 minutes and can be changed', () => {
 
 test('a quiet time under 1 minute is refused', () => {
   assert.throws(() => loadConfig({ ...valid, QUIET_MINUTES: '0' }), /QUIET_MINUTES/);
+});
+
+test('replies can use their own model server; everything else stays on the shared one', () => {
+  const cfg = loadConfig({
+    ...valid,
+    LLM_BASE_URL: 'http://127.0.0.1:11434/v1',
+    LLM_CHAT_BASE_URL: 'http://127.0.0.1:11500/v1',
+  });
+  assert.equal(cfg.llm.chatBaseUrl, 'http://127.0.0.1:11500/v1');
+  assert.equal(cfg.llm.baseUrl, 'http://127.0.0.1:11434/v1');
+});
+
+test('with no chat server set, replies use the shared one', () => {
+  const cfg = loadConfig({ ...valid, LLM_BASE_URL: 'http://127.0.0.1:11434/v1' });
+  assert.equal(cfg.llm.chatBaseUrl, 'http://127.0.0.1:11434/v1');
 });

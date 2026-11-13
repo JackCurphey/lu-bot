@@ -1,5 +1,34 @@
 # Lu Bot — status
 
+> **2026-11-13: Lu runs on the Windows PC (`mrpc`, 192.168.0.155) on Bonsai 2 27B (v1.9, D41–D44).**
+> Deployed from `feat/lu-on-pc` (cut from unmerged `feat/tiny-chat`), not yet merged. Code in
+> `C:\lu-bot` (copied from `git ls-files`, not a git checkout), portable Node 26.12.1 in
+> `C:\lu-bot\node`, model `C:\bonsai\bonsai.gguf` (PTQ1_0) with PrismML's llama.cpp in
+> `C:\bonsai\bin`. Two Task Scheduler tasks at boot, no login needed: `Lu Model`
+> (`scripts/windows/start-model.ps1`, 127.0.0.1:8080, alias `bonsai.gguf`) and `Lu Bot`
+> (`start-lu.ps1`, waits for `/health`). Logs `C:\lu-bot\logs\{model,lu}.log`. Judges and replies
+> both on Bonsai with `LLM_DISABLE_THINKING=true`; history 60/40, each earlier line capped at 500 chars;
+> `-c 24576` (12,288 tokens per slot; measured worst case 7,887). Stop for real with
+> `scripts\windows\stop-all.ps1` (`-Disable` keeps it off after reboots) — `Stop-ScheduledTask`
+> alone leaves the programs running. Crash restarts are done by loops inside the start scripts (10 s
+> gap; Task Scheduler's own restart doesn't fire — kill-tested). Rename phrases widened (v1.9 work). Lu is offline whenever the PC is gaming, off or restarting
+> (accepted). Reboot check passed 11:17; live check 11:23 (5 judge calls, 4 replies at 1.1–1.6 s);
+> Jack's verdict on reply quality pending. Mini: `com.curphey.lu-bot` and `com.curphey.lu-tiny`
+> disabled and booted out; backup `~/lu-bot-backup-pre-pc-20261113-111053.tar.gz`.
+> **Way back:** on the PC run `stop-all.ps1 -Disable`; copy `C:\lu-bot\data\{lu.db,credits.json}`
+> back to the mini's `~/lu-bot/data/` if credits changed; on the mini
+> `launchctl enable gui/$(id -u)/com.curphey.lu-bot`, the same for `com.curphey.lu-tiny`, then
+> `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist` for each. The judge
+> wording was retuned for Bonsai (D43); re-check it with `scripts/eval-addressee.js` on Qwen.
+
+> **2026-11-02: Lu's replies come from the tiny model (v1.8, D39, D40).** Deployed from
+> `feat/tiny-chat`, not yet merged. Adapter: `com.curphey.lu-tiny` on 127.0.0.1:11500, files in
+> `~/lu-tiny`, source in `~/tiny-llm/serve`. Judges and embeddings stay on Qwen. Trained on
+> BIS-cord chats; the owner confirmed its members agreed to use in Cry's Cantina. **Way back:**
+> in the mini's `.env`, remove `LLM_CHAT_BASE_URL` and set `LLM_CHAT_MODEL=qwen3:4b-instruct-3t`,
+> then `launchctl kickstart -k gui/$(id -u)/com.curphey.lu-bot`. Backup: `~/lu-bot-env-qwen-*.bak`.
+> Awaiting a live reply check. The wrong v1.7 announcement may still need deleting.
+
 > **2026-09-27: Major project started — Lu replaces Sapphire in Cry's Cantina.
 > Phase: between-wps. WP-1 closed (v1.2 + v1.3 deployed). WP-3 (logging)
 > moved ahead of WP-2 (D35); re-audit in progress on `feat/wp3-logging`.**
@@ -25,6 +54,12 @@
 > PID 5829. The log shows `Loaded 141 members`, `Registered 2 slash command(s)`
 > and `Announced v1.5`. LOGGING_ENABLED=true since v1.4 (`.env` backup
 > `~/lu-bot-env-before-logging-20260927-195224.bak`).
+>
+> **Deployed 2026-10-02 20:42 (v1.6, `3faf906`, PR #6):** Minecraft server
+> announcement + persona facts about it. Backup
+> `~/lu-bot-backup-b6ef7c3-20261002-204253.tar.gz`. PID 35249. Log shows
+> `Announced v1.6`, `Loaded 141 members`, `Registered 2 slash command(s)`;
+> `bot.err.log` untouched since Sep 13.
 >
 > **2026-10-02: Lu's model capped at 3 threads; Minecraft server shares the mini.**
 > `LLM_CHAT_MODEL` and `LLM_JUDGE_MODEL` now `qwen3:4b-instruct-3t` (Ollama

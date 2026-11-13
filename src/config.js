@@ -28,14 +28,21 @@ export function loadLlmConfig(env) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
+  const baseUrl = env.LLM_BASE_URL || 'http://localhost:1234/v1';
+
   return {
-    baseUrl: env.LLM_BASE_URL || 'http://localhost:1234/v1',
+    baseUrl,
+    // Replies may come from a different server than the judges and embeddings.
+    chatBaseUrl: env.LLM_CHAT_BASE_URL || baseUrl,
     chatModel: env.LLM_CHAT_MODEL,
     judgeModel: env.LLM_JUDGE_MODEL,
     embedModel: env.LLM_EMBED_MODEL,
     // The "is this aimed at Lu?" judge may run on a smaller model than the
     // corpus judge; which one is decided by measurement on the mini.
     addresseeModel: env.LLM_ADDRESSEE_MODEL || env.LLM_JUDGE_MODEL,
+    // Reasoning models (Bonsai 2) think before answering unless told not to:
+    // 3-7 s per reply, and the thinking can use up the whole token cap.
+    disableThinking: env.LLM_DISABLE_THINKING === 'true',
   };
 }
 
