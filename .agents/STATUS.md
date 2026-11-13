@@ -1,5 +1,24 @@
 # Lu Bot — status
 
+> **2026-11-13: Lu runs on the Windows PC (`mrpc`, 192.168.0.155) on Bonsai 2 27B (v1.9, D41–D44).**
+> Deployed from `feat/lu-on-pc` (cut from unmerged `feat/tiny-chat`), not yet merged. Code in
+> `C:\lu-bot` (copied from `git ls-files`, not a git checkout), portable Node 26.12.1 in
+> `C:\lu-bot\node`, model `C:\bonsai\bonsai.gguf` (PTQ1_0) with PrismML's llama.cpp in
+> `C:\bonsai\bin`. Two Task Scheduler tasks at boot, no login needed: `Lu Model`
+> (`scripts/windows/start-model.ps1`, 127.0.0.1:8080, alias `bonsai.gguf`) and `Lu Bot`
+> (`start-lu.ps1`, waits for `/health`). Logs `C:\lu-bot\logs\{model,lu}.log`. Judges and replies
+> both on Bonsai with `LLM_DISABLE_THINKING=true`; history 60/40. Stop for real with
+> `scripts\windows\stop-all.ps1` (`-Disable` keeps it off after reboots) — `Stop-ScheduledTask`
+> alone leaves the programs running. Lu is offline whenever the PC is gaming, off or restarting
+> (accepted). Reboot check passed 11:17; live check 11:23 (5 judge calls, 4 replies at 1.1–1.6 s);
+> Jack's verdict on reply quality pending. Mini: `com.curphey.lu-bot` and `com.curphey.lu-tiny`
+> disabled and booted out; backup `~/lu-bot-backup-pre-pc-20261113-111053.tar.gz`.
+> **Way back:** on the PC run `stop-all.ps1 -Disable`; copy `C:\lu-bot\data\{lu.db,credits.json}`
+> back to the mini's `~/lu-bot/data/` if credits changed; on the mini
+> `launchctl enable gui/$(id -u)/com.curphey.lu-bot`, the same for `com.curphey.lu-tiny`, then
+> `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist` for each. The judge
+> wording was retuned for Bonsai (D43); re-check it with `scripts/eval-addressee.js` on Qwen.
+
 > **2026-11-02: Lu's replies come from the tiny model (v1.8, D39, D40).** Deployed from
 > `feat/tiny-chat`, not yet merged. Adapter: `com.curphey.lu-tiny` on 127.0.0.1:11500, files in
 > `~/lu-tiny`, source in `~/tiny-llm/serve`. Judges and embeddings stay on Qwen. Trained on
