@@ -9,8 +9,11 @@ foreach ($name in 'Lu Bot', 'Lu Model') {
   Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
   if ($Disable) { Disable-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue | Out-Null }
 }
-Get-Process node -ErrorAction SilentlyContinue |
-  Where-Object { $_.Path -eq 'C:\lu-bot\node\node.exe' } | Stop-Process -Force
+# Stopping the tasks first ends the start scripts' restart loops; only then
+# are the programs stopped, so nothing starts them again.
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+  Where-Object { $_.ExecutablePath -eq 'C:\lu-bot\node\node.exe' -and $_.CommandLine -like '*src/index.js*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Get-Process llama-server -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -like 'C:\bonsai\*' } | Stop-Process -Force
 Write-Output 'stopped'
