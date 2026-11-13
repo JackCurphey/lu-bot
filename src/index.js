@@ -40,8 +40,8 @@ for (const warning of startupWarnings(config)) {
   console.warn(`WARNING: ${warning}`);
 }
 
-const llm = createLlm({ baseUrl: config.llm.baseUrl });
-const chatLlm = createLlm({ baseUrl: config.llm.chatBaseUrl });
+const llm = createLlm({ baseUrl: config.llm.baseUrl, disableThinking: config.llm.disableThinking });
+const chatLlm = createLlm({ baseUrl: config.llm.chatBaseUrl, disableThinking: config.llm.disableThinking });
 // Resolved against this module, not the process working directory: under
 // launchd, systemd or pm2 — how this is actually run — cwd is not the repo
 // root and a relative path here is an ENOENT crash at startup.

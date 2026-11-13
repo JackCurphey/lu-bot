@@ -45,6 +45,7 @@ test('loadLlmConfig returns the correct shape with a default baseUrl', () => {
     judgeModel: 'judge',
     embedModel: 'embed',
     addresseeModel: 'judge',
+    disableThinking: false,
   });
 });
 
@@ -68,6 +69,14 @@ test('loadLlmConfig lists every missing model key at once', () => {
   );
 });
 
+test('LLM_DISABLE_THINKING is on only for exactly "true"', () => {
+  const base = { LLM_CHAT_MODEL: 'c', LLM_JUDGE_MODEL: 'j', LLM_EMBED_MODEL: 'e' };
+  assert.equal(loadLlmConfig({ ...base, LLM_DISABLE_THINKING: 'true' }).disableThinking, true);
+  for (const v of [undefined, '', 'false', 'TRUE', '1', ' true']) {
+    assert.equal(loadLlmConfig({ ...base, LLM_DISABLE_THINKING: v }).disableThinking, false, `value ${v}`);
+  }
+});
+
 test('loadLlmConfig honours an explicit LLM_BASE_URL override', () => {
   const llm = loadLlmConfig({
     LLM_CHAT_MODEL: 'chat',
@@ -87,6 +96,7 @@ test('loadConfig still returns exactly the same llm section as before', () => {
     judgeModel: 'judge',
     embedModel: 'embed',
     addresseeModel: 'judge',
+    disableThinking: false,
   });
 });
 

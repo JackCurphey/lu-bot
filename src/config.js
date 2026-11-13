@@ -40,6 +40,9 @@ export function loadLlmConfig(env) {
     // The "is this aimed at Lu?" judge may run on a smaller model than the
     // corpus judge; which one is decided by measurement on the mini.
     addresseeModel: env.LLM_ADDRESSEE_MODEL || env.LLM_JUDGE_MODEL,
+    // Reasoning models (Bonsai 2) think before answering unless told not to:
+    // 3-7 s per reply, and the thinking can use up the whole token cap.
+    disableThinking: env.LLM_DISABLE_THINKING === 'true',
   };
 }
 

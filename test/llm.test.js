@@ -185,3 +185,28 @@ test('chatWithFinish sends max_tokens only when maxTokens is given', async () =>
   assert.equal(JSON.parse(calls[0].init.body).max_tokens, 3);
   assert.equal('max_tokens' in JSON.parse(calls[1].init.body), false);
 });
+
+test('with disableThinking, chat and chatWithFinish ask the server not to think', async () => {
+  const { fetchImpl, calls } = stubFetch({ choices: [{ message: { content: 'x' }, finish_reason: 'stop' }] });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl, disableThinking: true });
+  await llm.chat({ model: 'm', messages: [] });
+  await llm.chatWithFinish({ model: 'm', messages: [] });
+  assert.equal(calls.length, 2);
+  for (const c of calls) assert.deepEqual(c.body.chat_template_kwargs, { enable_thinking: false });
+});
+
+test('without disableThinking, requests carry no chat_template_kwargs', async () => {
+  const { fetchImpl, calls } = stubFetch({ choices: [{ message: { content: 'x' }, finish_reason: 'stop' }] });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl });
+  await llm.chat({ model: 'm', messages: [] });
+  await llm.chatWithFinish({ model: 'm', messages: [] });
+  assert.equal(calls.length, 2);
+  for (const c of calls) assert.equal('chat_template_kwargs' in c.body, false);
+});
+
+test('embed never carries chat_template_kwargs', async () => {
+  const { fetchImpl, calls } = stubFetch({ data: [{ embedding: [1] }] });
+  const llm = createLlm({ baseUrl: 'http://x/v1', fetchImpl, disableThinking: true });
+  await llm.embed({ model: 'e', input: ['a'] });
+  assert.equal('chat_template_kwargs' in calls[0].body, false);
+});
