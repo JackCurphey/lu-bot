@@ -192,7 +192,8 @@ project root.
    `Registered 2 slash command(s)` and `Announced v1.9`.
 4. Live check in Discord: a five-turn conversation with two people, plus one
    message that isn't aimed at Lu, to check the addressee judge.
-5. **Way back:** stop both PC tasks, then
+5. **Way back:** stop and disable both PC tasks, then on the mini
+   `launchctl enable gui/$(id -u)/com.curphey.lu-bot` and
    `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.curphey.lu-bot.plist`
    (and `lu-tiny`) on the mini. Copy back `credits.json` and `lu.db` first if
    members earned credits on the PC.
