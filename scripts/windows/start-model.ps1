@@ -12,7 +12,7 @@ $log = "$root\logs\model.log"
 # --alias: without it the server names the model by its full path, which
 # doesn't match LLM_CHAT_MODEL / LLM_JUDGE_MODEL=bonsai.gguf in .env, and Lu's
 # startup check switches the addressee judge off.
-$serverArgs = '-m C:\bonsai\bonsai.gguf --alias bonsai.gguf -ngl 99 -fa on -c 16384 ' +
+$serverArgs = '-m C:\bonsai\bonsai.gguf --alias bonsai.gguf -ngl 99 -fa on -c 24576 ' +
   '--cache-type-k q4_0 --cache-type-v q4_0 --jinja --parallel 2 ' +
   '--host 127.0.0.1 --port 8080'
 

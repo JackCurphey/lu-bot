@@ -7,7 +7,8 @@
 > `C:\bonsai\bin`. Two Task Scheduler tasks at boot, no login needed: `Lu Model`
 > (`scripts/windows/start-model.ps1`, 127.0.0.1:8080, alias `bonsai.gguf`) and `Lu Bot`
 > (`start-lu.ps1`, waits for `/health`). Logs `C:\lu-bot\logs\{model,lu}.log`. Judges and replies
-> both on Bonsai with `LLM_DISABLE_THINKING=true`; history 60/40. Stop for real with
+> both on Bonsai with `LLM_DISABLE_THINKING=true`; history 60/40, each earlier line capped at 500 chars;
+> `-c 24576` (12,288 tokens per slot; measured worst case 7,887). Stop for real with
 > `scripts\windows\stop-all.ps1` (`-Disable` keeps it off after reboots) — `Stop-ScheduledTask`
 > alone leaves the programs running. Crash restarts are done by loops inside the start scripts (10 s
 > gap; Task Scheduler's own restart doesn't fire — kill-tested). Rename phrases widened (v1.9 work). Lu is offline whenever the PC is gaming, off or restarting
