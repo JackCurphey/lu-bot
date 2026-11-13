@@ -9,7 +9,8 @@
 > (`start-lu.ps1`, waits for `/health`). Logs `C:\lu-bot\logs\{model,lu}.log`. Judges and replies
 > both on Bonsai with `LLM_DISABLE_THINKING=true`; history 60/40. Stop for real with
 > `scripts\windows\stop-all.ps1` (`-Disable` keeps it off after reboots) — `Stop-ScheduledTask`
-> alone leaves the programs running. Lu is offline whenever the PC is gaming, off or restarting
+> alone leaves the programs running. Crash restarts are done by loops inside the start scripts (10 s
+> gap; Task Scheduler's own restart doesn't fire — kill-tested). Rename phrases widened (v1.9 work). Lu is offline whenever the PC is gaming, off or restarting
 > (accepted). Reboot check passed 11:17; live check 11:23 (5 judge calls, 4 replies at 1.1–1.6 s);
 > Jack's verdict on reply quality pending. Mini: `com.curphey.lu-bot` and `com.curphey.lu-tiny`
 > disabled and booted out; backup `~/lu-bot-backup-pre-pc-20261113-111053.tar.gz`.
