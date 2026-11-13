@@ -23,11 +23,14 @@ function fakeTimers() {
 
 // --- Prompt --------------------------------------------------------------------
 //
-// Prompt length is nearly the whole cost of this call on the mini's CPU, so
-// the prompt is held to a budget rather than to exact wording.
+// Prompt length was nearly the whole cost of this call on the mini's CPU, so
+// the prompt is held to a budget rather than to exact wording. Raised from
+// 300 to 500 on 2026-11-13: the Bonsai wording needs ~450 chars to keep
+// follow-ups to Lu, and on the PC's GPU a judge call takes ~75 ms. On the
+// mini (the way back) it would add roughly a second per judge call.
 
 test('the system prompt is short and asks for YES or NO about Lu', () => {
-  assert.ok(ADDRESSEE_SYSTEM.length <= 300, `system prompt is ${ADDRESSEE_SYSTEM.length} chars`);
+  assert.ok(ADDRESSEE_SYSTEM.length <= 500, `system prompt is ${ADDRESSEE_SYSTEM.length} chars`);
   assert.match(ADDRESSEE_SYSTEM, /Lu/);
   assert.match(ADDRESSEE_SYSTEM, /YES/);
   assert.match(ADDRESSEE_SYSTEM, /NO/);

@@ -1,0 +1,31 @@
+{
+  "_about": "Made-up conversations for measuring the 'is this aimed at Lu?' judge (src/addressee.js) against a real model. Not real messages. 'tune' examples are used while adjusting the judge's wording; 'holdout' examples are only scored at the end, to catch wording that fits the tune set and nothing else. Messages that name or @mention Lu never reach the judge, so none of the judged lines name him.",
+  "tune": [
+    { "want": "yes", "chat": [["sam", "lu whats the best farm"], ["Lu", "a collective one"], ["sam", "why collective though?"]] },
+    { "want": "yes", "chat": [["alex", "hey lu"], ["Lu", "comrade alex"], ["alex", "are you a communist or something"]] },
+    { "want": "yes", "chat": [["sam", "lu pick a movie"], ["Lu", "battleship potemkin"], ["sam", "never heard of it, is it good?"]] },
+    { "want": "yes", "chat": [["jo", "morning all"], ["Lu", "the workers rise early"], ["jo", "haha you sound like my grandad"]] },
+    { "want": "yes", "chat": [["sam", "anyone up for minecraft later"], ["Lu", "only if the means of production are shared"], ["sam", "ok so what should i build first then"]] },
+    { "want": "yes", "chat": [["mia", "lu do you sleep"], ["Lu", "the revolution never sleeps"], ["mia", "that's not an answer"]] },
+    { "want": "yes", "chat": [["alex", "lu rate my base"], ["Lu", "a bourgeois fortress, 3/10"], ["alex", "rude. what would make it a 10"]] },
+    { "want": "yes", "chat": [["jo", "lu who's the best player here"], ["Lu", "all workers are equal"], ["jo", "cop out"], ["jo", "pick one"]] },
+    { "want": "no", "chat": [["sam", "lu pick a movie"], ["Lu", "battleship potemkin"], ["alex", "sam you coming to football tonight?"]] },
+    { "want": "no", "chat": [["jo", "anyone got spare iron"], ["alex", "jo i have a stack in the chest by spawn"]] },
+    { "want": "no", "chat": [["sam", "lu what game should i play"], ["Lu", "stardew, comrade"], ["alex", "sam did you see the match last night"], ["sam", "yeah alex that last goal was unreal"]] },
+    { "want": "no", "chat": [["mia", "server restarting in 5 mins everyone"]] },
+    { "want": "no", "chat": [["alex", "lu say something"], ["Lu", "something"], ["jo", "anyway mia did you finish the castle"]] },
+    { "want": "no", "chat": [["sam", "brb dinner"], ["jo", "enjoy"]] },
+    { "want": "no", "chat": [["jo", "lu thoughts on pineapple pizza"], ["Lu", "a crime against the proletariat"], ["mia", "honestly i agree with him"], ["sam", "mia you're wrong and you know it"]] },
+    { "want": "no", "chat": [["alex", "who wants to do the nether run"], ["sam", "me"], ["jo", "me too, give me 10"]] }
+  ],
+  "holdout": [
+    { "want": "yes", "chat": [["sam", "lu tell me a fact"], ["Lu", "the soviets launched the first satellite"], ["sam", "wait really? when"]] },
+    { "want": "yes", "chat": [["mia", "lu are you real"], ["Lu", "as real as class struggle"], ["mia", "so no then"]] },
+    { "want": "yes", "chat": [["jo", "lu can you help me with my homework"], ["Lu", "only if you share the answers with the class"], ["jo", "it's maths, chapter 4, fractions"]] },
+    { "want": "yes", "chat": [["alex", "lu settle this, cats or dogs"], ["Lu", "cats, they refuse to work for anyone"], ["alex", "lol ok fair point"]] },
+    { "want": "no", "chat": [["sam", "lu hi"], ["Lu", "greetings comrade"], ["mia", "jo did you get my message about saturday"]] },
+    { "want": "no", "chat": [["alex", "new update is out btw"], ["jo", "finally, downloading now"]] },
+    { "want": "no", "chat": [["jo", "lu sing"], ["Lu", "the internationale, verse one"], ["sam", "anyway who's on tonight"]] },
+    { "want": "no", "chat": [["mia", "gg everyone that raid was great"], ["alex", "gg mia you carried"]] }
+  ]
+}
