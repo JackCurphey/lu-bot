@@ -6,6 +6,12 @@ the lu-testing-environment channel. Write the notes for the people in the
 server, not for programmers. Second number up for an ordinary update (v1.1,
 v1.2…); first number up only for a big change.
 
+## v1.9 — 2026-11-13
+
+- lu has moved to a new computer and runs on a much bigger model now, so he should make sense again and keep up with a conversation
+- he's got his personality back
+- he goes offline when that computer is busy or switched off, so if he's quiet that's probably why
+
 ## v1.8 — 2026-11-02
 
 - lu's replies now come from a small model trained on chats from another server, whose members agreed to this. it's not the model he used before
