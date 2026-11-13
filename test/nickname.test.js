@@ -89,6 +89,13 @@ test('the wider wordings still leave ordinary chat alone', () => {
     'we should call you later',
     'the new name for the server is great',
     'what is ur name',
+    "i'll call you out on that",
+    "i'll call you on monday",
+    "i'll call you tmrw",
+    "we'll call you if we need you",
+    'i could call you an idiot',
+    'we should call you an ambulance',
+    'that is the thing you should be called out for',
   ];
   for (const m of notRequests) {
     assert.doesNotMatch(m, NICKNAME_REQUEST_RE, `expected NOT to match: "${m}"`);
@@ -138,6 +145,12 @@ test('NICKNAME_RESET_RE matches explicit reset phrasings', () => {
   for (const p of phrasings) {
     assert.match(p, NICKNAME_RESET_RE, `expected to match: "${p}"`);
   }
+});
+
+test('NICKNAME_RESET_RE also accepts "ur" for "your", like the rename phrases do', () => {
+  assert.match('lu change ur name back', NICKNAME_RESET_RE);
+  assert.match('lu reset ur nick', NICKNAME_RESET_RE);
+  assert.match('lu go back to ur normal name', NICKNAME_RESET_RE);
 });
 
 test('NICKNAME_RESET_RE does not match a rename to a new name or unrelated messages', () => {
