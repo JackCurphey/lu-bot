@@ -51,6 +51,50 @@ test('does not match unrelated messages', () => {
   }
 });
 
+// --- 2026-11-13: wordings members actually use, missed by the first list ------
+// Lu refused these on Bonsai because they never reached the model as renames.
+
+test('detects the wider set of rename wordings', () => {
+  const phrasings = [
+    'lu your new name is Steve',
+    'lu i have a new name for you: Steve',
+    'lu can i call you Steve',
+    'lu can we call you Steve from now on',
+    "lu i'll call you Steve",
+    'lu we will call you Steve now',
+    'lu i think we should call you Steve',
+    'lu we could call you Steve',
+    "lu you're called Steve now",
+    'lu you are called Steve',
+    'lu you should be called Steve',
+    'lu im going to rename you to Steve',
+    'lu renaming you Steve',
+    'lu name yourself Steve',
+    'lu change ur name to Steve',
+    'lu set ur nick to Steve',
+  ];
+  for (const p of phrasings) {
+    assert.match(p, NICKNAME_REQUEST_RE, `expected to match: "${p}"`);
+  }
+});
+
+test('the wider wordings still leave ordinary chat alone', () => {
+  const notRequests = [
+    "what's your name",
+    'my name is sam',
+    'the farm should be called the commune',
+    "i'll call you later",
+    'we will call you back tomorrow',
+    'can i call you tonight',
+    'we should call you later',
+    'the new name for the server is great',
+    'what is ur name',
+  ];
+  for (const m of notRequests) {
+    assert.doesNotMatch(m, NICKNAME_REQUEST_RE, `expected NOT to match: "${m}"`);
+  }
+});
+
 // --- Fix round 1, Minor 4: "go by" must be addressed to Lu ------------------
 
 test('the bare "go by" alternative only matches when addressed to Lu', () => {
